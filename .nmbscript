@@ -1,10 +1,11 @@
 #!/bin/bash
 
-### NMBScript v1.0 ###
+### NMBScript v1.1 ###
 # Configurações iniciais. Não alterar.
 # A serem atualizadas conforme novas versões do script forem distribuídas.
-current_nmbscript_version="1.0"
-current_nmbot_url="https://bit.ly/nmbot-1-3-linux-java"
+current_nmbscript_version="1.1"
+current_nmbot_version="1.7"
+current_nmbot_url="https://bit.ly/nmbot-1-7-linux-java"
 
 # Verificações iniciais: se é a primeira vez que o script é executado e se a versão do
 #   script é a mesma já instalada no sistema. Caso não seja, a informação é atualizada.
@@ -41,10 +42,11 @@ fi
 function nm-instalar() {
   # opcional: $1 = arquivo .zip do nmbot (para instalar outras distribuições ou pacotes do NMBOT
   # se omitido, instala a partir do arquivo ~/.nmbot.zip
-  nmbotfile="${HOME}/$1"
+  local nmbotfile="${HOME}/$1"
   [[ ! -f "$nmbotfile" ]] && nmbotfile="${HOME}/.nmbot.zip"
-  [[ ! -f "$nmbotfile" ]] && { echo -e "\nArquivo do NMBOT não encontrado.\nPara informar um novo link para download do NMBOT, use o comando nm-atualizar.\nNenhuma alteração foi feita.\n" >&2; return 1; }
+  [[ ! -f "$nmbotfile" ]] && { echo -e "\nArquivo do NMBOT não encontrado.\nPara informar um novo link para download do NMBOT, use o comando 'nm-atualizar'.\nNenhuma alteração foi feita.\n" >&2; return 1; }
   do-nmbot-list
+  local pergunta
   if [[ "$NM_COUNT" -ge "1" ]]
     then pergunta=$'\nVocê possui '"${NM_COUNT}"$' instância(s) do NMBOT instalada(s).\nDeseja instalar a instância de número '"$(( $NM_COUNT + 1 ))? (s/n) > "
     else pergunta=$'\nVocê não possui instâncias do NMBOT instaladas atualmente.\nDeseja continuar com a instalação? (s/n) > '
@@ -52,19 +54,26 @@ function nm-instalar() {
   read -p "$pergunta" -r
   do-nmbs-sncheck "$REPLY" || { echo -e "\nNenhuma alteração foi realizada.\n"; return 1; }
 
+  local tmp_user
   pergunta=$'Digite o e-mail do usuário cujo robô será instalado: (você pode editá-lo mais tarde)\n> '
   read -p "$pergunta" -r tmp_user
   tmp_user=${tmp_user:="usuario@email.com"}
 
-  do-nmbot-install "$tmp_user" "$nmbotfile"
+  do-nmbot-install "$tmp_user" "$nmbotfile" || {
+    echo -e "\nHouve um erro durante a instalação do NMBOT.\nO pacote de instalação provavelmente está corrompido.\nExecute o comando 'nm-atualizar' e informe um endereço (URL) de download válido para o NMBOT na VERSÃO PARA LINUX COM JAVA.\n"
+    unset nmnewpath
+    return 1
+  }
   echo -e "\nInstalação completa. A nova instância do NMBOT foi instalada no diretório ${nmnewpath}.\n"
-  unset nmbotfile nmnewpath pergunta
+
+  do-nmbot-version-check "${nmnewpath}/lib/nmbot.jar"
+  unset nmnewpath
   return 0
 }
 
 # Função interativa para desinstalar uma ou mais instâncias do robô
 function nm-desinstalar() {
-  do-nmbot-list || { echo -e "\nVocê não possui instâncias do NMBOT instaladas.\nPara instalar, use o comando nm-instalar.\n" >&2; return 1; }
+  do-nmbot-list || { echo -e "\nVocê não possui instâncias do NMBOT instaladas.\nPara instalar, use o comando 'nm-instalar'.\n" >&2; return 1; }
 
   echo -e "\nVocê possui $NM_COUNT instância(s) do NMBOT instalada(s).\nQual delas você deseja desinstalar?\n"
 
@@ -83,7 +92,7 @@ function nm-desinstalar() {
 
   #set the backup string to "1", which will tell the do-nmbot-backup command to save a backup from a given user
   bkstring="1"
-  #in the following case, set bkstring to 2, which will tell the do-nmbot-backup command to save backups from all instances
+  #if "remove all instances" is chosen, set bkstring to 2, which tells the do-nmbot-backup command to save backups from all instances
   [[ "$select_choice" = Remover* ]] && { bkstring="2"; nmbs_current_index="-a"; }
 
   read -p "Você selecionou a opção ${REPLY}) $select_choice
@@ -91,7 +100,7 @@ Confirma? (s/n) > " -r
   do-nmbs-sncheck "$REPLY" || { echo -e "\nCancelado. Nenhuma alteração foi feita.\n"; return 1; }
 
   read -p "Deseja fazer backup dos arquivos de configuração e dos logs (registros de atividade)? (s/n) > " -r
-  do-nmbs-sncheck "$REPLY" && do-nmbot-backup "$bkstring" "$nmbs_current_index" && warnbackup=1
+  do-nmbs-sncheck "$REPLY" && do-nmbot-backup "$bkstring" "$nmbs_current_index" && local warnbackup=1
 
   if [[ "$nmbs_current_index" = "-a" ]];
     then echo -en "\nRemovendo todas as instâncias do robô..."
@@ -100,55 +109,56 @@ Confirma? (s/n) > " -r
   do-nmbot-uninstall "$nmbs_current_index" && echo -e " concluído!\n" || echo -e " oops! Ocorreu um erro durante a desinstalação. Verifique as instâncias escolhidas para desinstalação.\n"
 
   [[ "$warnbackup" = "1" ]] && echo -e "Backup salvo em ${HOME}/backup-nmbot\n"
-  unset warnbackup select_choice select_number
+  unset select_choice select_number
   return 0
 }
 
 # Função para listar as instâncias instaladas do NMBOT no terminal
 function nm-listar() {
-  do-nmbot-list || { echo -e "\nVocê não possui instâncias do NMBOT instaladas.\nPara instalar, use o comando nm-instalar.\n" >&2; return 1; }
+  do-nmbot-list || { echo -e "\nVocê não possui instâncias do NMBOT instaladas.\nPara instalar, use o comando 'nm-instalar'.\n" >&2; return 1; }
 
   echo -e "\nVocê possui $NM_COUNT instância(s) do NMBOT instalada(s) no seu diretório raiz (${HOME}):"
+  local l
   for l in "${!nmdir[@]}"; do
     echo "$(( l + 1 )). ${nmdir[l]} - usuário: ${nmuser[l]}"
   done
   echo ""
-  unset l
+  return 0
 }
 
 function nm-configurar() {
-  do-nmbot-list || { echo -e "\nVocê não possui instâncias do NMBOT instaladas.\nPara instalar, use o comando nm-instalar.\n" >&2; return 1; }
+  do-nmbot-list || { echo -e "\nVocê não possui instâncias do NMBOT instaladas.\nPara instalar, use o comando 'nm-instalar'.\n" >&2; return 1; }
   tnmbs-sel-instance
 
   echo -e "\nQual arquivo de configuração você deseja editar?\nRobô instalado em ~/${nmdir[$nmbs_current_index]} - usuário ${nmuser[$nmbs_current_index]}\n"
   select_options=("Carteira SPOT (spot-wallet)" "Carteira SPOT fixa (spot-fixed)" "Carteira FUTUROS (futures-wallet)" "Carteira FUTUROS fixa (futures-fixed)" "Configurações de usuário (user)" "Cancelar")
   tnmbs-select
 
+  local nm_tmpfile=""
   case $select_number in
     0) nm_tmpfile="${nmpath[$nmbs_current_index]}/config/spot-wallet.properties" ;;
     1) nm_tmpfile="${nmpath[$nmbs_current_index]}/config/spot-fixed.properties" ;;
     2) nm_tmpfile="${nmpath[$nmbs_current_index]}/config/futures-wallet.properties" ;;
     3) nm_tmpfile="${nmpath[$nmbs_current_index]}/config/futures-fixed.properties" ;;
     4) nm_tmpfile="${nmpath[$nmbs_current_index]}/config/user.properties" ;;
-    5) unset escolha; echo -e "\nCancelado. Nenhuma alteração foi feita.\n"; return 1 ;;
+    5) echo -e "\nCancelado. Nenhuma alteração foi feita.\n"; return 1 ;;
   esac
 
-  [[ ! -f "$nm_tmpfile" ]] && { echo -e "\n${nm_tmpfile}\nArquivo correspondente não encontrado.\nVerifique manualmente o diretório ~/${nmdir[$nmbs_current_index]}/config/\n" >&2; unset nm_tmpfile; return 1; }
+  [[ ! -f "$nm_tmpfile" ]] && { echo -e "\n${nm_tmpfile}\nArquivo correspondente não encontrado.\nVerifique manualmente o diretório ~/${nmdir[$nmbs_current_index]}/config/\n" >&2; return 1; }
 
   echo -e "\nDeseja abrir o editor de texto ou revisar e preencher as informações na linha de comando?\n"
   select_options=("Editor de texto (útil se voce tiver experiência, e necessário para ativar algumas opções desativadas por padrão)" "Seguir com linha de comando (mais fácil, você será guiado(a) pelo conteúdo do arquivo)")
   tnmbs-select
 
   if [[ "$select_number" = "0" ]]; then
-    echo -e "\nVocê acessará o arquivo escolhido com o editor de texto 'nano'.\nUse as setas do teclado e as teclas 'Page Up' e 'Page Down' para mover o cursor.\nEm alguns sistemas você também pode usar o mouse para rolar e para clicar.\n\nApós fazer suas alterações, use as teclas 'Ctrl + X' para sair, depois 'Y' para salvar, e 'Enter' para confirmar (não altere o nome do arquivo).\nPressione Enter para continuar..."
+    echo -e "\nVocê acessará o arquivo escolhido com o editor de texto 'nano'.\nUse as setas do teclado e as teclas 'Page Up' e 'Page Down' para mover o cursor.\nEm alguns sistemas você também pode usar o mouse para rolar e para clicar.\n\nApós fazer suas alterações, use as teclas 'Ctrl + X' para sair, depois 'Y' para salvar, e 'ENTER' para confirmar (não altere o nome do arquivo).\nPressione 'ENTER' para continuar..."
     read
     nano -m "$nm_tmpfile"
     echo ""
-    unset escolha nm_tmpfile
     return 0
   fi
 
-  echo -e "\nVocê acessará o arquivo escolhido uma linha de cada vez.\nFaça as alterações necessárias em cada uma delas e pressione Enter para ir para a próxima linha.\nCaso não queira alterar o conteúdo de alguma linha, apenas pressione Enter para seguir em frente.\nPara deixar uma entrada em branco, apague o seu conteúdo.\nPressione Enter para iniciar..."
+  echo -e "\nVocê acessará o arquivo escolhido uma linha de cada vez.\nFaça as alterações necessárias em cada uma delas e pressione 'ENTER' para ir para a próxima linha.\nCaso não queira alterar o conteúdo de alguma linha, apenas pressione 'ENTER' para seguir em frente.\nPara deixar uma entrada em branco, apague o seu conteúdo.\nPressione 'ENTER' para iniciar..."
   read
 
 #  there are 3 requirements for the next section: a loop that reads the input file line-by-line, a break to prompt for
@@ -163,14 +173,15 @@ function nm-configurar() {
 #   since there seemed to be no workaround this issue, i opted to build a for loop which reads the input file with
 # sed -n "n"p instead. this solution is less sophisticated, but works nonetheless. it does run external programs
 # and is less efficient resourcewise, but since the configuration files are not very large, it will do the job
-# without any hiccups. the tr -d is necessary to remove return carriages and newline characters.
+# without any hiccups. the tr -d is necessary to remove return carriages and newline characters, hence updating
+# only the text when changes are made.
 
-  total=$( grep -c "" "$nm_tmpfile" )
-  let n=1
+  local total=$( grep -c "" "$nm_tmpfile" )
+  local line lastheader printlh entry value n
   for (( n=1; n<="$total"; n++ )); do
-    # ler a prodima linha do arquivo de configuração
+    # ler a próxima linha do arquivo de configuração
     line=$( sed -n ${n}p "$nm_tmpfile" | tr -d '\n\r' )
-    # se for um comentário (iniciae com #)
+    # se for um comentário (inicia com #)
     if [[ "$line" =~ ^[#] ]]; then
       # ajustar o cabeçalho da próxima entrada
       if [[ "$printlh" = "1" ]]; then
@@ -186,7 +197,7 @@ function nm-configurar() {
     else
       entry="${line% = *}"
       value="${line#* = }"
-      [[ "$printlh" = "1" ]] && { echo -e "\n${lastheader}"; unset printlh; }
+      [[ "$printlh" -eq 1 ]] && { echo -e "\n${lastheader}"; printlh=0; }
       read -e -p ">>> ${entry} = " -i "${value}" -r
       if [[ "$REPLY" = "$value" ]]; then
         continue
@@ -196,156 +207,147 @@ function nm-configurar() {
     fi
   done
   echo -e "\nFim da edição. O arquivo foi salvo.\n"
-  unset nm_tmpfile lastheader printlh entry value line n
+  return 0
 }
 
-# Função para agendar e automatizar a execução do robô:
+# Função interativa para agendar e automatizar a execução do robô:
 function nm-agendar() {
-  do-nmbot-list || { echo -e "\nVocê não possui instâncias do NMBOT instaladas.\nPara instalar, use o comando nm-instalar.\n" >&2; return 1; }
-  tnmbs-sel-instance
+  do-nmbot-list || { echo -e "\nVocê não possui instâncias do NMBOT instaladas.\nPara instalar, use o comando 'nm-instalar'.\n" >&2; return 1; }
 
-  # Pergunta ao usuário para qual carteira deseja agendar o rebalanceamento:
-  if [[ "$NM_COUNT" -gt "1" ]]; then
-    echo "Você escolheu a instância ${nmdir[$nmbs_current_index]}, do usuário ${nmuser[$nmbs_current_index]}."
-  else
-    echo -e "\nInstância instalada do NMBOT: ${nmdir[0]}, usuário ${nmuser[0]}."
-  fi
-  echo -e "Selecione a carteira cujo rebalanceamento você deseja agendar.\n"
+  echo -e "\nQual ação você deseja executar?\n"
 
-  select_options=("Carteira SPOT" "Carteira FUTUROS" "CONSULTAR agendamentos" "CANCELAR agendamentos")
+  select_options=("Agendar rebalanceamento da carteira SPOT" "Agendar rebalanceamento da carteira FUTUROS" "Consultar agendamentos existentes" "EXCLUIR TODOS os agendamentos")
   tnmbs-select
 
   case $select_number in
-    0) nmbot_run_file=spot-run.sh
-       nmbot_pw_file=spot-pwsync.sh
-       nmbot_sel_wallet=SPOT ;;
-    1) nmbot_run_file=futures-run.sh
-       nmbot_pw_file=futures-pwsync.sh
-       nmbot_sel_wallet=FUTUROS ;;
+    0) local nm_wallet="spot"
+       local nm_wallet_desc="SPOT" ;;
+    1) local nm_wallet="futures"
+       local nm_wallet_desc="FUTUROS" ;;
     [2-3]) : ;;
-    *) echo -e "\nAgendamento cancelado. Nenhum alteração foi feita.\n"
+    *) echo -e "\nOperação cancelada. Nenhum alteração foi feita.\n"
        return 1 ;;
   esac
 
-  # Temporário: o comando nm-agendar deve passar por desmembramento das suas funções, ativando função específica para executar
-  # as ações propostas de agendamento, consulta e cancelamento.
-  # Enquanto isso não ocorre, será feito um "desvio" para consulta e cancelamento, que evita a execução da função na parte
-  # específica de realizar agendamentos, mas polui um pouco o script com código desnecessário/repetido. Será melhorado.
-  # Além disso, o prompt para consulta e cancelamento aparece depois do prompt para seleção de instância, caso haja mais
-  # de uma instalada. A ser corrigido.
-  if [[ "$select_number" = "2" ]]; then
-    echo -e "\nVocê verá os agendamentos ativos relacionados ao NMBOT em uma tela separada.\nPara sair desta tela, pressione a tecle 'Q'."
-    read -p "Aperte ENTER para continuar..." -r
+  # REALIZAR AGENDAMENTOS
+  if [[ "$select_number" -lt "2" ]]; then
+    # Selecionar usuário
+    tnmbs-sel-instance
+    if [[ "$NM_COUNT" -gt "1" ]]; then
+      echo "* Instância do NMBOT selecionada: ${nmdir[$nmbs_current_index]}, usuário ${nmuser[$nmbs_current_index]}"
+    else
+      echo "* Instância instalada do NMBOT: ${nmdir[0]}, usuário ${nmuser[0]}"
+    fi
 
-    touch crontab.tmp
-    crontabfile="/var/spool/cron/crontabs/$USER"
-    crontabfileexists="0"
+    local serv_tz="$(date +%Z)"
+    echo -e "\nEste comando irá automatizar a execução do rebalanceamento da carteira ${nm_wallet_desc}.\nLembre-se de que o fuso horário do sistema pode ser diferente do seu fuso horário pessoal.\n* O horário atual do sistema é: $(date +'%T (%Z)').\n* O horário atual de Brasília é: $(TZ=America/Sao_Paulo date +'%T (%:z)')\n\nDeseja agendar o rebalanceamento para qual horário? (* HORÁRIO DO SISTEMA - ${serv_tz} *)"
+
+    while true; do
+      # Pergunta ao usuário o horário em que deseja executar o rebalanceamento.
+      read -p "Digite no formato HH:mm (por exemplo, 00:05) > " -r
+      [[ ! "$REPLY" =~ ^([0-9]|0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$ ]] && echo -e "Horário inválido. Digite novamente. (ou 'Ctrl + C' para cancelar)\n" && continue
+      break
+    done
+
+    local nm_hour nm_minute
+    # remove minutes from user input
+    nm_hour=${REPLY%:*}
+    # remove leading zero from hour, to avoid the 'octal bug'
+    nm_hour=${nm_hour#0}
+    # set hour to '0' if nm_hour is null (in case the user entered '0' and it was removed by the previous command)
+    nm_hour=${nm_hour:=0}
+    # remove hour from user input
+    nm_minute=${REPLY#*:}
+    # remove leading zero from minute, to avoid the 'octal bug'
+    nm_minute=${nm_minute#0}
+
+    # default behaviour: does not schedule pwsync
+    local nm_pw_set="0"
+    read -p "OPCIONAL: Deseja realizar também o agendamento da sincronização de senha com o servidor? (s/n) > " -r
+    do-nmbs-sncheck "$REPLY" && nm_pw_set="1"
+
+    # perform scheduling
+    echo -e "\nRealizando agendamento da execução do NMBOT..."
+    do-nmbot-schedule "$nmbs_current_index" "$nm_wallet" "$nm_hour" "$nm_minute" "$nm_pw_set"
+
+    # Fim da instalação dos agendamentos.
+    printf -v nm_hour "%02d" $nm_hour
+    printf -v nm_minute "%02d" $nm_minute
+    echo -e "\nO rebalanceamento da carteira $nm_wallet_desc será executado diariamente às ${nm_hour}h${nm_minute}min (${serv_tz})."
+    if [[ "$nm_pw_set" = "1" ]]; then
+      echo "A sincronização de senha com o servidor do NMBOT foi agendada para horário aleatório."
+    else
+      # Solicitar execução manual da sincronização de senha ao menos uma vez caso não tenha sido feito agendamento específico
+      [[ "$nm_wallet" = "spot" ]] && local nm_pw_command="nm-pw-spot" || local nm_pw_command="nm-pw-fut"
+      echo "A sincronização de senha não foi agendada. Execute-a manualmente pelo menos uma vez com o comando '${nm_pw_command}'."
+    fi
+    echo -e "\nPara conferir os agendamentos existentes, use o comando 'nm-agendar' ou 'crontab -l'.\nPara excluir todos os agendamentos, use o comando 'nm-agendar' ou 'crontab -r'.\n"
+    # end of command
+
+  # CONSULTAR AGENDAMENTOS
+  elif [[ "$select_number" = "2" ]]; then
+    echo -e "\nVocê verá os agendamentos ativos relacionados ao NMBOT em uma tela separada.\nPara sair desta tela, pressione a tecle 'Q'."
+    read -p "Aperte 'ENTER' para continuar..." -r
+
+    local crontab_tmp="${HOME}/crontab.tmp"
+    touch "$crontab_tmp"
+
+    local crontabfile="/var/spool/cron/crontabs/$USER"
+    local crontabfileexists="0"
     sudo test -f "$crontabfile" && crontabfileexists="1"
-    if [[ "$crontabfileexists" -eq "1" ]]; then
-      sudo cat "$crontabfile" | grep NMBOT > crontab.tmp
-      sed -i 's/\*/-/g' crontab.tmp
-      touch agendamentos
-      echo -e "Agendamentos do NMBOT presentes no sistema:\n" > agendamentos
+    if [[ "$crontabfileexists" = "1" ]]; then
+      sudo cat "$crontabfile" | grep NMBOT > "$crontab_tmp"
+      sed -i 's/\*/-/g' "$crontab_tmp"
+      local tasks_tmp="${HOME}/agendamentos"
+      touch "$tasks_tmp"
+      echo -e "Agendamentos ativos do NMBOT:\n* Horário atual do sistema: $(date +'%H:%M (%Z)')\n* Horário atual de Brasília: $(TZ=':America/Sao_Paulo' date +'%H:%M (%:z)')\n" > "$tasks_tmp"
+      local line line_array line_command line_utc_time
+      local serv_tz="$(date +%Z)"
       while read -r line; do
+        [[ "${line:0:1}" = "#" ]] && continue
         line_array=($line)
         line_command="${line_array[@]:6}"
         line_command="${line_command//$\{}"
         line_command="${line_command//_HOME\}}"
-        echo "Comando: $line_command" >> agendamentos
-        echo -e "Horário: ${line_array[1]}:${line_array[0]}\n" >> agendamentos
-      done < crontab.tmp
-      less agendamentos
+        echo "Comando: $line_command" >> "$tasks_tmp"
+        line_utc_time="$(printf "%02d" ${line_array[1]}):$(printf "%02d" ${line_array[0]})"
+        echo -e "Horário: $line_utc_time $serv_tz ($(do-nmbs-tz $line_utc_time UTC) BR)\n" >> "$tasks_tmp"
+      done < "$crontab_tmp"
+      less "$tasks_tmp"
       echo -e "\nConcuído. Se desejar consultar os agendamentos diretamente no sistema, use o comando 'crontab -l'.\n"
-      rm crontab.tmp agendamentos 2> /dev/null
-      unset line line_array line_command crontabfile crontabfileexists
-      return 0
+      rm "$crontab_tmp" "$tasks_tmp" 2> /dev/null
     else
-      echo -e "\nNão há agendamentos ativos no sistema.\n"
+      echo -e "\nNão há agendamentos presentes no sistema.\n"
       return 1
     fi
-  elif [[ "$select_number" = "3" ]]; then
+    # end of command
+
+  # EXCLUIR TODOS OS AGENDAMENTOS
+  else
     echo -e "\nEste comando irá excluir todos os agendamentos relacionados ao NMBOT do seu sistema.\nVocê pode facilmente reagendá-los com o comando 'nm-agendar'."
     read -p "Deseja prosseguir? (s/n) > " -r
     do-nmbs-sncheck "$REPLY" || { echo -e "\nCancelado. Nenhuma alteração foi feita.\n"; return 1; }
 
-    touch crontab.tmp
-    crontabfile="/var/spool/cron/crontabs/$USER"
-    crontabfileexists="0"
+    local crontab_tmp="${HOME}/crontab.tmp"
+    touch "$crontab_tmp"
+
+    local crontabfile="/var/spool/cron/crontabs/$USER"
+    local crontabfileexists="0"
     sudo test -f "$crontabfile" && crontabfileexists="1"
-    if [[ "$crontabfileexists" -eq "1" ]]; then
-      sudo sed /NMBOT/d "$crontabfile" > crontab.tmp
-      crontab crontab.tmp 2> /dev/null || { echo -e "\nHouve um erro durante a instalação dos agendamentos no sistema.\nTente novamente com o comando 'nm-agendar' ou agende manualmente através do comando 'crontab -e'.\n"; rm crontab.tmp 2> /dev/null; return 1; }
+    if [[ "$crontabfileexists" = "1" ]]; then
+      sudo sed /NMBOT/d "$crontabfile" > "$crontab_tmp"
+      crontab "$crontab_tmp" 2> /dev/null || { echo -e "\nHouve um erro durante a instalação dos agendamentos no sistema.\nTente novamente com o comando 'nm-agendar' ou agende manualmente através do comando 'crontab -e'.\n"; rm "$crontab_tmp" 2> /dev/null; return 1; }
       sudo service cron start
-      rm crontab.tmp 2> /dev/null
-      return 0
+      rm "$crontab_tmp" 2> /dev/null
+      echo -e "\nConcuído. Todos os agendamentos referentes ao NMBOT foram excluídos.\nSe desejar reagendar tarefas, use o comando 'nm-agendar'.\n"
+
     else
       echo -e "\nNão há agendamentos ativos no sistema.\n"
       return 1
     fi
+    # end of command
   fi
 
-  echo -e "\nEste comando irá automatizar a execução do rebalanceamento da carteira $nmbot_sel_wallet para o usuário ${nmuser[$nmbs_current_index]}.\nDeseja agendar o rebalanceamento para qual horário?\nLembre-se de que o fuso horário do sistema pode ser diferente do seu fuso horário pessoal.\nO horário atual do sistema é: $(date +%H:%M:%S).\n"
-
-  while true; do
-    # Pergunta ao usuário o horário em que deseja executar o rebalanceamento.
-    read -p "Digite o horário desejado no formato HH:mm (por exemplo, 21:05) > " -r
-    [[ ! "$REPLY" =~ ^([0-9]|0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$ ]] && echo "Horário inválido. Digite novamente." && continue
-    break
-  done
-
-  nm_hour=${REPLY%:*}
-  # para evitar bug do octal:
-  nm_hour=${nm_hour#0}
-  # para evitar bug de hora null se entrada for "0":
-  nm_hour=${nm_hour:=0}
-  nm_minute=${REPLY#*:}
-  nm_minute=${nm_minute#0}
-
-  nm_pw_set="0"
-  read -p "OPCIONAL: Deseja realizar também o agendamento da sincronização de senha com o servidor? (s/n) > " -r
-  do-nmbs-sncheck "$REPLY" && nm_pw_set="1"
-
-  echo -e "\nRealizando agendamento da execução do NMBOT..."
-  # Cria arquivo temporário para armazenamento dos agendamentos a serem instalados com o comando crontab.
-  touch crontab.tmp
-
-  # Verifica se já existem quaisquer agendamentos instalados para o usuário atual.
-  crontabfile="/var/spool/cron/crontabs/$USER"
-  crontabfileexists="0"
-  sudo test -f "$crontabfile" && crontabfileexists="1"
-  if [[ "$crontabfileexists" -eq "1" ]]; then
-    # Exclui os agendamentos já existentes relativos à carteira que está sendo configurada, mantendo os demais..
-    sudo sed /^#/d "$crontabfile" > crontab.tmp
-    sed -i /^$/d crontab.tmp
-    sed -i "/NMBOT${nmdir_number[$nmbs_current_index]}_HOME}\/${nmbot_run_file}/d" crontab.tmp
-    sed -i "/NMBOT${nmdir_number[$nmbs_current_index]}_HOME}\/${nmbot_pw_file}/d" crontab.tmp
-  fi
-
-  # Cria os agendamentos conforme escolhido pelo usuário.
-  # O rebalanceamento será agendado exatamente no horário escolhido, enquanto a sincronização de senha será
-  #   agendada para um horário aleatório, distante pelo menos 2 horas do horário do rebalanceamento.
-
-  [[ "$nm_pw_set" = "1" ]] && echo "$((10 + $RANDOM % 40)) $(( ( ( $nm_hour + 2 ) % 24 + $RANDOM % 21 ) % 24 )) * * * bash \${NMBOT${nmdir_number[$nmbs_current_index]}_HOME}/${nmbot_pw_file}" >> crontab.tmp
-  echo "$nm_minute $nm_hour * * * bash \${NMBOT${nmdir_number[$nmbs_current_index]}_HOME}/${nmbot_run_file}" >> crontab.tmp
-  echo "" >> crontab.tmp
-
-  unset nmbot_pw_file nmbot_run_file crontabfile crontabfileexists
-
-  # Instalar novos agendamentos e forçar início do serviço cron.
-  crontab crontab.tmp 2> /dev/null || { echo -e "\nHouve um erro durante a instalação dos agendamentos no sistema.\nTente novamente com o comando 'nm-agendar' ou agende manualmente através do comando 'crontab -e'.\n"; rm crontab.tmp 2> /dev/null; return 1; }
-  sudo service cron start
-
-  # Fim da instalação dos agendamentos. Remover arquivos e variáveis temporárias para maior organização.
-  echo -e "\nO rebalanceamento da carteira $nmbot_sel_wallet será executado diariamente às ${nm_hour}h${nm_minute}min (horário do servidor)."
-  if [[ "$nm_pw_set" = "1" ]]; then
-    echo "A sincronização de senha com o servidor do NMBOT foi agendada para horário aleatório."
-  else
-    [[ "$nmbot_sel_wallet" = "SPOT" ]] && nm_pw_command="nm-pw-spot" || nm_pw_command="nm-pw-fut"
-    echo "A sincronização de senha não foi agendada. Execute-a manualmente pelo menos uma vez com o comando ${nm_pw_command}."
-  fi
-  echo -e "\nPara conferir os agendamentos existentes, use o comando 'nm-agendar' ou 'crontab -l'.\nPara excluir todos os agendamentos, use o comando 'nm-agendar' ou 'crontab -r'.\n"
-  rm crontab.tmp 2> /dev/null
-  unset nmbot_sel_wallet nm_hour nm_minute nm_pw_command
   return 0
 }
 
@@ -360,10 +362,10 @@ function nm-backup() {
   select_options=("Restaurar configurações a partir de um backup")
   [[ "$NM_COUNT" -eq "1" ]] && select_options+=("Salvar backup das configurações do usuário") || select_options+=("Salvar backup das configurações de um usuário" "Salvar backup das configurações de todos os usuários")
   tnmbs-select
-  nm_bakmode="$select_number"
+  local nm_bakmode="$select_number"
 
   # variable set here for error checking: check whether backup directory exists
-  nmbakd="${HOME}/backup-nmbot/"
+  local nmbakd="${HOME}/backup-nmbot/"
 
   # SE FOR 1 -> SALVAR de UM USUÁRIO
   if [[ "$nm_bakmode" = "1" ]]; then
@@ -373,7 +375,7 @@ function nm-backup() {
     read -p "Deseja continuar? (s/n) > " -r
     do-nmbs-sncheck "$REPLY" || { echo -e "\nCancelado. Nenhuma alteração foi feita.\n"; return 1; }
 
-    echo -e "Se desejar, digite um nome para o diretório de backup (contendo apenas letras, números e hífen).\nCaso contrário, deixe em branco e pressione Enter."
+    echo -e "Se desejar, digite um nome para o diretório de backup (contendo apenas letras, números e hífen).\nCaso contrário, deixe em branco e pressione 'ENTER'."
     while true; do
       read -p "Nome do backup: > " -r
       if [[ -z "$REPLY" ]]; then
@@ -384,7 +386,7 @@ function nm-backup() {
         continue
       else
         [[ -d "${nmbakd}${REPLY}" ]] && { echo "Já existe um backup com este nome. Tente novamente."; continue; }
-        nm_bk_tmp=~/nm_bk_tmp/
+        local nm_bk_tmp="${HOME}/nm_bk_tmp/"
         mkdir "$nm_bk_tmp" 2> /dev/null
         mkdir "${nm_bk_tmp}${REPLY}" 2> /dev/null || { echo "Nome inválido. Tente novamente."; rm -rf "$nm_bk_tmp"; continue; }
         rm -rf "$nm_bk_tmp"
@@ -405,7 +407,7 @@ function nm-backup() {
     # check 1: is there a backup folder?
     [[ ! -d "$nmbakd" ]] && { echo -e "\nNão foi encontrado um diretório de backups do NMBOT (${nmbakd}).\nNenhuma alteração foi feita.\n"; return 1; }
     # check 2: is there at least one folder inside it?
-    nmbak_opt=(${nmbakd}*/)
+    local nmbak_opt=(${nmbakd}*/)
     [[ "${nmbak_opt[@]}" = "${nmbakd}*/" ]] && { echo -e "\nNão foi encontrado nenhum backup do NMBOT no diretório de backups (${nmbakd}).\nNenhuma alteração foi feita.\n"; return 1; }
 
     tnmbs-sel-instance
@@ -417,7 +419,7 @@ function nm-backup() {
       read -p "Deseja continuar? (s/n) > " -r
       do-nmbs-sncheck "$REPLY" || { echo -e "\nCancelado. Nenhuma alteração foi feita.\n"; return 1; }
 
-      nmbak_files=(${nmbak_opt[0]}config/*.properties)
+      local nmbak_files=(${nmbak_opt[0]}config/*.properties)
       [[ "${nmbak_files[@]}" = "${nmbak_opt[0]}config/*.properties" ]] && { echo -e "\nNão foram encontrados arquivos de backup do NMBOT no diretório apontado.\nNenhuma alteração foi feita.\n"; return 1; }
       do-nmbot-backup 0 "$nmbs_current_index" "${nmbak_opt[0]}"
 
@@ -425,6 +427,7 @@ function nm-backup() {
     else
       echo -e "\nQual diretório contém o backup que você deseja restaurar?\n"
       PS3=$'\nDigite a opção correspondente: '
+      local choice item escolha
       select choice in "${nmbak_opt[@]/${nmbakd}}"; do
         for item in "${nmbak_opt[@]/${nmbakd}}"; do
           if [[ "$item" = "$choice" ]]; then
@@ -434,35 +437,37 @@ function nm-backup() {
         done
         echo "Opção inválida. Tente novamente."
       done
-      unset choice item
 
       echo -e "\nA pasta de backup escolhida é ${nmbak_opt[$escolha]}."
       read -p "Deseja continuar? (s/n) > " -r
       do-nmbs-sncheck "$REPLY" || { echo -e "\nCancelado. Nenhuma alteração foi feita.\n"; return 1; }
 
-      nmbak_files=(${nmbak_opt[$escolha]}config/*.properties)
+      local nmbak_files=(${nmbak_opt[$escolha]}config/*.properties)
       [[ "${nmbak_files[@]}" = "${nmbak_opt[$escolha]}config/*.properties" ]] && { echo -e "\nNão foram encontrados arquivos de backup do NMBOT no diretório apontado.\nNenhuma alteração foi feita.\n"; return 1; }
       do-nmbot-backup 0 "$nmbs_current_index" "${nmbak_opt[$escolha]}"
     fi
   fi
 
   echo -e "\nConcluído.\n"
-  unset nm_bakmode selopt choice item
+  return 0
 }
 
 # Função para acessar os LOGs do NMBOT
 function nm-registros() {
-  do-nmbot-list || { echo -e "\nVocê não possui instâncias do NMBOT instaladas.\nPara instalar, use o comando nm-instalar.\n" >&2; return 1; }
+  do-nmbot-list || { echo -e "\nVocê não possui instâncias do NMBOT instaladas.\nPara instalar, use o comando 'nm-instalar'.\n" >&2; return 1; }
+  # optional: $1 = index
   nmbs_current_index="$1"
   if [[ "$#" = "0" ]]; then
     tnmbs-sel-instance
-  elif [[ ! -d "${nmpath[${1}]}" ]]; then return 1
+  elif [[ ! -d "${nmpath[${1}]}" ]]; then
+    return 1
   fi
 
   echo -e "\nVocê deseja consultar quais registros do NMBOT?\nRobô instalado em ${nmdir[$nmbs_current_index]}/ - usuário ${nmuser[$nmbs_current_index]}:\n"
   select_options=("Registro simplificado (frequentemente solicitado pelo suporte)" "Carteira SPOT - registro longo" "Carteira FUTUROS - registro longo" "Cancelar")
   tnmbs-select
 
+  local nm_tmpfile
   case $select_number in
     0) nm_tmpfile="${nmpath[$nmbs_current_index]}/log-user/user.properties.log" ;;
     1) nm_tmpfile="${nmpath[$nmbs_current_index]}/log/log4j-nm.log" ;;
@@ -470,10 +475,12 @@ function nm-registros() {
     3) echo ""; return 1 ;;
   esac
 
-  [[ ! -f "$nm_tmpfile" ]] && { echo -e "\nArquivo correspondente não encontrado.\nVerifique manualmente os diretórios ~/${nmdir[$nmbs_current_index]}/log/ e ~/${nmdir[$nmbs_current_index]}/log-user/\n"; unset nm_tmpfile; return 1; }
+  [[ ! -f "$nm_tmpfile" ]] && { echo -e "\nArquivo correspondente não encontrado.\nVerifique manualmente os diretórios ~/${nmdir[$nmbs_current_index]}/log/ e ~/${nmdir[$nmbs_current_index]}/log-user/\n"; return 1; }
 
+  local escolha
   if [[ "${#nm_tmpfile[@]}" -gt "1" ]]; then
     echo -e "\nQual arquivo você gostaria de exibir?"
+    local logs item
     select logs in "${nm_tmpfile[@]/#${HOME}\/}"; do
       for item in "${nm_tmpfile[@]/#${HOME}\/}"; do
         if [[ "$item" = "$logs" ]]; then
@@ -483,16 +490,13 @@ function nm-registros() {
       done
     echo "Opção inválida. Tente novamente."
     done
-    unset logs item
   fi
   escolha=${escolha:=0}
 
-  echo -e "\nVocê irá visualizar o arquivo ${nm_tmpfile[$escolha]}.\nO conteúdo do arquivo será exibido em uma tela separada.\n\nPara rolar a tela, se necessário, use as setas do teclado e as teclas 'Page Up' e 'Page Down'.\nPara salvar prints da tela, use as teclas 'Command+Shift+3' (Mac) ou 'Windows+Print Screen' (Windows).\nPara sair do modo de visualização, pressione a tecla 'Q'.\n\nPressione Enter para continuar..."
+  echo -e "\nVocê irá visualizar o arquivo ${nm_tmpfile[$escolha]}.\nO conteúdo do arquivo será exibido em uma tela separada.\n\nPara rolar a tela, se necessário, use as setas do teclado e as teclas 'Page Up' e 'Page Down'.\nPara salvar prints da tela, use as teclas 'Command+Shift+3' (Mac) ou 'Windows+Print Screen' (Windows).\nPara sair do modo de visualização, pressione a tecla 'Q'.\n\nPressione 'ENTER' para continuar..."
   read
 
   less +G "${nm_tmpfile[$escolha]}"
-
-  unset escolha nm_tmpfile
   return 0
 }
 
@@ -502,14 +506,16 @@ function nm-atualizar() {
   #			1: update download URL. keep package
   #			2: update download URL and installed binaries. keep package
   #			3: update installed binaries only (set onwards). discard package
+  # optional: $1 = path to .zip package
   unset nm_update_mode
   do-nmbot-list
 
   # se não houver instâncias instaladas:
   if [[ "$?" = "1" ]]; then
-    echo -e "\nVocê não possui instâncias do NMBOT instaladas.\nPara instalar, use o comando nm-instalar.\n" >&2
+    echo -e "\nVocê não possui instâncias do NMBOT instaladas.\nPara instalar, use o comando 'nm-instalar'.\n" >&2
 
-    nmbotfile="${HOME}/.nmbot.zip"
+    local nmbotfile="${HOME}/.nmbot.zip"
+    local nm_update_mode nm_url
 
     # se houver pacote baixado no sistema: (mode=1)
     if [[ -f "$nmbotfile" ]]; then
@@ -547,42 +553,55 @@ function nm-atualizar() {
     nm_url="$REPLY"
   fi
 
-  # PASSO 1: download do pacote da URL informada ou armazenada
-  wget -qc -nc --show-progress "${nm_url}" -O ~/bot-tmp.zip || {
-    echo -e "\nOcorreu um erro durante o download do arquivo do robô e a atualização não pôde ser concluída.\nVerifique o endereço de download informado e tente novamente com o comando nm-atualizar.\n"
-    rm -f ~/bot-tmp.zip 2> /dev/null
-    return 1
-  }
-
-  echo -e "Conferindo o pacote de arquivos baixado..."
-  mkdir ~/nmbtmp 2> /dev/null
+  # PASSO 1: obtenção do pacote de instalação: URL informada ou arquivo indicado como parâmetro da função
+  echo -e "Fazendo download do pacote de arquivos..."
+  local bot_tmp
+  if [[ ! -f "$1" ]]; then
+    # usar URL informada
+    bot_tmp="${HOME}/bot-tmp.zip"
+    wget -qc --show-progress "$nm_url" -O "$bot_tmp" 2> /dev/null || {
+      echo -e "\nOcorreu um erro durante o download do arquivo do robô e a atualização não pôde ser concluída.\nVerifique o endereço de download informado e tente novamente com o comando 'nm-atualizar'.\n"
+      rm -f "$bot_tmp" 2> /dev/null
+      return 1
+    }
+  else
+    # usar arquivo informado
+    bot_tmp="$1"
+    if [[ ! -f "$bot_tmp" ]]; then
+      echo -e "\nO arquivo informado não existe ou não é acessível.\n"
+      return 1
+    fi
+  fi
 
   # PASSO 2: verificar se o pacote é um arquivo .zip válido
-  unzip -qqo ~/bot-tmp.zip -d ~/nmbtmp || {
-    echo -e "\nO arquivo baixado não pôde ser processado. Ele pode estar corrompido ou o endereço informado não se refere ao arquivo correto.\nVerifique o endereço de download informado e tente novamente com o comando nm-atualizar.\n"
-    rm -f ~/bot-tmp.zip
-    rm -rf ~/nmbtmp
+  echo -e "Conferindo o pacote de instalação..."
+  local folder_tmp="${HOME}/folder-tmp"
+  mkdir "$folder_tmp" 2> /dev/null
+  unzip -qqo "$bot_tmp" -d "$folder_tmp" || {
+    echo -e "\nO arquivo baixado não pôde ser processado. Ele pode estar corrompido ou o endereço informado não se refere ao arquivo correto.\nVerifique o endereço de download informado e tente novamente com o comando 'nm-atualizar'.\n"
+    [[ ! "$bot_tmp" = "$1" ]] && rm -f "$bot_tmp"
+    rm -rf "$folder_tmp"
     return 1
   }
 
   # PASSO 3: verificar se o pacote contém o arquivo nmbot.jar como esperado
-  nmbot_newfile=$(find ~/nmbtmp -name "nmbot.jar" 2> /dev/null)
-  [[ -f "$nmbot_newfile" ]] || {
-    echo -e "\nO arquivo do NMBOT não foi encontrado no pacote de arquivos que foi baixado.\nVerifique o endereço de download informado e tente novamente com o comando nm-atualizar.\n" >&2
-    rm -f ~/bot-tmp.zip
-    rm -rf ~/nmbtmp
+  local nmbot_check=$(find "$folder_tmp" -name nmbot.jar 2> /dev/null)
+  [[ ! -f "$nmbot_check" ]] && {
+    echo -e "\nO arquivo do NMBOT não foi encontrado no pacote de arquivos que foi baixado.\nVerifique o endereço de download informado e tente novamente com o comando 'nm-atualizar'.\n" >&2
+    [[ ! "$bot_tmp" = "$1" ]] && rm -f "$bot_tmp"
+    rm -rf "$folder_tmp"
     return 1
   }
 
   # PASSO 4: verificar se o pacote contém o java
-  java_check=$(find ~/nmbtmp/jre/bin -name java* 2> /dev/null)
-  [[ -z "$java_check" ]] && {
+  local java_check=$(find "${folder_tmp}/jre/bin" -name java 2> /dev/null)
+  [[ ! -f "$java_check" ]] && {
     case $nm_update_mode in
       # CASO NÃO TENHA JAVA:
       # se o comando for para armazenar o pacote (com ou sem atualização de URL), cancelar
       [0-1]) echo -e "\nO pacote de instalação do NMBOT baixado não possui o pacote Java.\nPor isso, o endereço de download não será armazenado e o pacote será excluído.\nTente novamente com o endereço para o NMBOT em sua VERSÃO PARA LINUX COM JAVA.\n" >&2
-             rm -f ~/bot-tmp.zip
-             rm -rf ~/nmbtmp
+             [[ ! "$bot_tmp" = "$1" ]] && rm -f "$bot_tmp"
+             rm -rf "$folder_tmp"
              return 1 ;;
       # se o comando for para atualizar instâncias instaladas, atualizar mas descartar pacote e URL
       2)     echo -e "\nO pacote de instalação do NMBOT baixado não possui o pacote Java.\nEle poderá ser usado para atualização das instâncias atualmente instaladas, mas não será armazenado para futuras instalações.\n"
@@ -591,14 +610,14 @@ function nm-atualizar() {
   }
 
   # PASSO 5: verificar se o pacote contém scripts para windows
-  windows_check=$(find ~/nmbtmp -name *.bat)
+  local windows_check=$(find "$folder_tmp" -name *.bat)
   [[ -n "$windows_check" ]] && {
     case $nm_update_mode in
       # CASO TENHAS SCRIPTS PARA WINDOWS:
       # se o comando for para armazenar o pacote (com ou sem atualização de URL), cancelar
       [0-1]) echo -e "\nO pacote de instalação do NMBOT baixado contém scripts para rodá-lo no sistema operacional Windows. Por isso, o endereço de download não será armazenado e o pacote será excluído.\nTente novamente com o endereço para o NMBOT em sua VERSÃO PARA LINUX COM JAVA.\n" >&2
-             rm -f ~/bot-tmp.zip
-             rm -rf ~/nmbtmp
+             [[ ! "$bot_tmp" = "$1" ]] && rm -f "$bot_tmp"
+             rm -rf "$folder_tmp"
              return 1 ;;
       # se o comando for para atualizar instâncias instaladas, atualizar mas descartar pacote e URL
       2)     echo -e "\nO pacote de instalação do NMBOT baixado contém scripts para rodá-lo no sistema operacional Windows. Ele poderá ser usado para atualização das instâncias atualmente instaladas, mas não será armazenado para futuras instalações.\n"
@@ -610,46 +629,54 @@ function nm-atualizar() {
   echo -e "\nO pacote de instalação/atualização do NMBOT foi conferido."
   read -p "Deseja prosseguir? (s/n) > " -r
   do-nmbs-sncheck "$REPLY" || {
-    rm -f ~/bot-tmp.zip
-    rm -rf ~/nmbtmp
-    echo -e "\nCancelado. Nenhuma alteração foi feita.\nO arquivo baixado foi removido.\n"
+    [[ ! "$bot_tmp" = "$1" ]] && rm -f "$bot_tmp"
+    rm -rf "$folder_tmp"
+    echo -e "Cancelado. Nenhuma alteração foi feita e o arquivo baixado foi excluído.\n"
     return 1
   }
-  echo -en "\nAtualizando o NMBOT..."
 
+  echo -en "\nAtualizando o NMBOT..."
   case $nm_update_mode in
     # apenas armazenar o pacote de instalação (mode=0)
-    0)    mv ~/bot-tmp.zip ~/.nmbot.zip ;;
+    0)    [[ ! "$bot_tmp" = "$1" ]] && mv "$bot_tmp" "${HOME}/.nmbot.zip" ;;
 
     # armazenar o pacote de instalação e a URL de download (mode=1)
-    1)    sudo sed -i "/NM_LAST_URL/d" /etc/profile.d/nmbscript-variables.sh
-          echo "export NM_LAST_URL=\"${nm_url}\"" | sudo tee -a /etc/profile.d/nmbscript-variables.sh > /dev/null
-          . /etc/profile.d/nmbscript-variables.sh
-          bakstr=$( do-nmbs-datestr )
-          mv ~/.nmbot.zip ~/.nmbot-${bakstr}.zip.bak 2> /dev/null
-          mv ~/bot-tmp.zip ~/.nmbot.zip ;;
+    1)    [[ ! "$bot_tmp" = "$1" ]] && {
+            sudo sed -i "/NM_LAST_URL/d" /etc/profile.d/nmbscript-variables.sh
+            echo "export NM_LAST_URL=\"${nm_url}\"" | sudo tee -a /etc/profile.d/nmbscript-variables.sh > /dev/null
+            . /etc/profile.d/nmbscript-variables.sh
+            local bakstr=$( do-nmbs-datestr )
+            mv "${HOME}/.nmbot.zip" "${HOME}/.nmbot-${bakstr}.zip.bak" 2> /dev/null
+            mv "$bot_tmp" "${HOME}/.nmbot.zip"
+          } ;;
 
     # atualizar NMBOT, armazenar o pacote de instalação e a URL de download (mode=2)
-    2)    for a in "${nmpath[@]}"; do
-            cp "$nmbot_newfile" "${a}/lib/nmbot.jar"
+    2)    local a
+          for a in "${nmpath[@]}"; do
+            cp "$nmbot_check" "${a}/lib/nmbot.jar"
           done
-          sudo sed -i "/NM_LAST_URL/d" /etc/profile.d/nmbscript-variables.sh
-          echo "export NM_LAST_URL=\"${nm_url}\"" | sudo tee -a /etc/profile.d/nmbscript-variables.sh > /dev/null
-          . /etc/profile.d/nmbscript-variables.sh
-          bakstr=$( do-nmbs-datestr )
-          mv ~/.nmbot.zip ~/.nmbot-${bakstr}.zip.bak > /dev/null
-          mv ~/bot-tmp.zip ~/.nmbot.zip ;;
+          do-nmbot-version-check "${nmpath}/lib/nmbot.jar"
+          [[ ! "$bot_tmp" = "$1" ]] && {
+            sudo sed -i "/NM_LAST_URL/d" /etc/profile.d/nmbscript-variables.sh
+            echo "export NM_LAST_URL=\"${nm_url}\"" | sudo tee -a /etc/profile.d/nmbscript-variables.sh > /dev/null
+            . /etc/profile.d/nmbscript-variables.sh
+            local bakstr=$( do-nmbs-datestr )
+            mv "${HOME}/.nmbot.zip" "${HOME}/.nmbot-${bakstr}.zip.bak" 2> /dev/null
+            mv "$bot_tmp" "${HOME}/.nmbot.zip"
+          } ;;
 
     # atualizar NMBOT apenas (mode=3)
-    3)    for a in "${nmpath[@]}"; do
-            cp "$nmbot_newfile" "${a}/lib/nmbot.jar"
+    3)    local a
+          for a in "${nmpath[@]}"; do
+            cp "$nmbot_check" "${a}/lib/nmbot.jar"
           done
-          rm -f ~/bot-tmp.zip ;;
+          do-nmbot-version-check "${nmpath}/lib/nmbot.jar"
+          [[ ! "$bot_tmp" = "$1" ]] && rm -f "$bot_tmp" ;;
   esac
 
-  rm -rf ~/nmbtmp
-  unset nm_url a bakstr nm_update_mode
+  rm -rf "$folder_tmp"
   echo -e " concluído! Os arquivos foram atualizados com sucesso.\n"
+  return 0
 }
 
 
@@ -665,6 +692,8 @@ function nm-atualizar() {
 
 # Função de ajuda para uso do NMBScript
 function nms-ajuda() {
+  do-nmbot-version-check
+
   echo -e "\nNMBScript - Script de controle para o NMBOT.
 
 Lista de comandos disponíveis.
@@ -698,66 +727,76 @@ Controles do NMBScript:
  > nms-ajuda		Apresenta esta tela de ajuda com a descrição detalhada de todos os comandos.
  > nms-atualizar	Atualizar a versão do NMBScript.
  > nms-info		Informações adicionais sobre o NMBScript.
- > nms-remover		Remover o NMBScript do sistema.\n			Esse comando MANTÉM as instâncias do NMBOT instaladas e em funcionamento.\n			Opção -f: remove também o arquivo do NMBScript.
+ > nms-remover		Remover o NMBScript do sistema.\n			Opção -f: remove todos os arquivos do NMBScript e instaladores do NMBOT.\n			Esse comando MANTÉM as instâncias do NMBOT instaladas e em funcionamento.
 
  Versão atual do NMBScript:	$NMBSCRIPT_VERSION
- Versão mais recente do NMBOT: 	1.3\n
+ Versão atual do NMBOT: 	$NMBOT_VERSION\n
  Autor do script original: 	Victor H.S.\n"
 }
 
 # Função para atualização do NMBScript
 function nms-atualizar() {
-  echo -e "\nEste comando atualiza o NMBScript, substituindo-o pela versão mais atual.\nPara prosseguir, obtenha a URL (endereço para download do NMBScript).\n"
-  read -p "Cole ou digite aqui a URL para download do NMBScript: " -r
-  wget -qc -nc --show-progress "$REPLY" -O ~/nmbs-update.zip 2> /dev/null || {
-    echo -e "\nOcorreu um erro durante o download do arquivo e a atualização não pôde ser concluída.\nVerifique o endereço de download informado e tente novamente com o comando nms-atualizar.\n"
-    return 1
-  }
+  echo -e "\nEste comando atualiza o NMBScript, substituindo-o pela versão indicada."
 
-  mkdir ~/nmbstmp 2> /dev/null
-  unzip -qqo ~/nmbs-update.zip -d ~/nmbstmp || {
-    echo -e "\nO arquivo baixado não pôde ser processado. Ele pode estar corrompido, ou o endereço informado não se refere ao arquivo correto.\nVerifique o endereço de download informado e tente novamente com o comando nms-atualizar.\n"
-    rm -f ~/nmbs-update.zip
-    rm -rf ~/nmbstmp
-    return 1
-  }
-
-  if [[ ! -f ~/nmbstmp/nmbs-update ]]; then
-    echo -e "\nArquivo de atualização do NMBScript não encontrado no pacote baixado.\nO arquivo baixado será apagado do sistema.\nVerifique o endereço de download informado e tente novamente com o comando nms-atualizar.\n"
-    rm -f ~/nmbs-update.zip
-    rm -rf ~/nmbstmp
-    return 1
+  # optional: $1 = path to or filename of new script file
+  if [[ -f "$1" ]]; then
+    # get absolute path to file
+    # local nmbs_tmp="$(cd "$(dirname "$1")"; pwd -P)/$(basename "$1")"
+    local nmbs_tmp="$(do-nmbs-abspath "$1")"
+    echo -e "O arquivo indicado para substituir o NMBScript é o ${nmbs_tmp##*/}"
+  # main = use URL to download
   else
-    bakstr=$( do-nmbs-datestr )
-    mv ~/.nmbscript ~/.nmbscript-${bakstr}.bak
-    mv ~/nmbstmp/nmbs-update ~/.nmbscript
-    chmod 544 ~/.nmbscript
-    . ~/.nmbscript
+    echo -e "Para prosseguir, obtenha a URL (endereço para download do NMBScript).\n"
+    read -p "Cole ou digite aqui a URL para download do NMBScript > " -r
+
+    local nmbs_tmp="${HOME}/nmbs-tmp"
+    wget -qc --show-progress "$REPLY" -O "$nmbs_tmp" 2> /dev/null || {
+      echo -e "\nOcorreu um erro durante o download do arquivo de atualização do NMBScript.\nVerifique o endereço de download informado e tente novamente com o comando 'nms-atualizar'.\n"
+      rm -f "$nmbs_tmp" 2> /dev/null
+      return 1
+    }
   fi
 
-  rm -f ~/nmbs-update.zip
-  rm -rf ~/nmbstmp
-  echo -e "\nScript de controle do NMBOT atualizado.\nUse o comando 'nms-ajuda' para mais detalhes.\n"
+  if [[ ! -r "$nmbs_tmp" ]]; then
+    echo -e "\nO arquivo baixado não pode ser lido. Ele pode estar corrompido, ou o endereço informado não se refere ao arquivo correto.\nVerifique o endereço de download informado e tente novamente com o comando 'nms-atualizar'.\n"
+    rm -f "$nmbs_tmp" 2> /dev/null
+    return 1
+  fi
+
+  read -p "Deseja continuar com a atualização do NMBScript? (s/n) > " -r
+  do-nmbs-sncheck "$REPLY" || { echo -e "\nCancelado. Nenhuma alteração foi feita.\n"; rm -f "$nmbs_tmp" 2> /dev/null; return 1; }
+
+  bakstr=$(do-nmbs-datestr)
+  mv "${HOME}/.nmbscript" "${HOME}/.nmbscript-${bakstr}.bak"
+  [[ -f "$1" ]] && cp "$nmbs_tmp" "${HOME}/.nmbscript" || mv "$nmbs_tmp" "${HOME}/.nmbscript"
+  chmod 544 "${HOME}/.nmbscript"
+  . "${HOME}/.nmbscript"
+
+  echo -e "\nScript de controle do NMBOT atualizado.\nUse o comando 'nms-ajuda' para instruções de uso.\n\n*** Reinicie a conexão com o servidor para aplicar todas as alterações. ***\n"
+  return 0
 }
 
 # Função para exibir informações gerais na tela
+
 function nms-info() {
-echo -e "\n	NMBScript - Script de instalação e configuração do NMBOT
+  do-nmbot-version-check
+
+  echo -e "\n	NMBScript - Script de instalação e configuração do NMBOT
 \n	Este script foi desenvolvido para automatizar a instalação e a configuração do NMBOT em servidores rodando o Canonical Ubuntu Linux 18.04 LTS. O script foi amplamente testado no shell 'bash' versão 4.4.20, sendo provável que funcione em versões posteriores. Entretanto, para uso com outros tipos de shell ou com outras versões do 'bash', podem ser necessários ajustes no código. É recomendado que o sistema em que for utilizado não tenha outro uso além da execução do NMBOT, de forma que sugere-se a sua instalação em uma máquina virtual, possivelmente em ambiente de nuvem.
-\n	Pressione ENTER para continuar..."
-read
-echo -e "	O presente script foi criado com o intuito único e exclusivo de ajudar os demais usuários e assinantes da plataforma NM a configurarem o robô para seu uso pessoal. O script é distribuído livremente para uso, estudo, cópia, modificação e redistribuição. Não é fornecido sob nenhuma licença específica, tampouco são exigidos créditos ou direitos de autoria. Da mesma forma, não é oferecido nenhum tipo de suporte por parte do seu autor. Salienta-se que não há nenhuma pretensão de uso comercial e que o autor não pode ser responsabilizado por eventual e hipotético uso comercial indevido por terceiros.\n	..."
-read
-echo -e "	O autor deste script não possui nenhum vínculo com os criadores do NMBOT, os quais não prestarão nenhum tipo de suporte para o seu uso. O script torna a instalação, a configuração e a execução do NMBOT mais amigáveis e interativas, mas tenha em mente que a equipe da plataforma NM não presta suporte para o uso do NMBOT no sistema operacional Linux. O autor também esclarece que não se deseja, com esta aplicação, alterar de qualquer maneira o funcionamento intrínseco do NMBOT, em especial com relação às condicionantes de acesso ao robô instituídas pela equipe responsável por ele. É sabido que a execução do NMBOT está sujeita à adesão a uma assinatura paga, e o autor deste script, além de usuário, é um admirador do projeto e recomenda que todos os interessados façam sua adesão pelo site oficial: investidordesucesso.com.br\n	..."
-read
-echo -e "	Em resumo, o script tem como objetivo facilitar a vida dos colegas do curso que desejem rodar o NMBOT, especialmente os que querem fazê-lo em máquinas virtuais na nuvem e que possuem reduzida experiência com o sistema operacional Linux e com o uso de linhas de comando. É oferecido com base na solidariedade e de boa fé para que os colegas assinantes da plataforma NM tenham uma melhor experiência com o uso do robô. Tudo o que o script faz pode também ser feito manualmente. Use-o por sua conta e risco, desde que saiba o que está fazendo.\n	..."
-read
-echo -e "	Todas as alterações introduzidas no sistema por este script podem ser removidas com o comando 'nms-remover'. Por motivos de transparência, quase todos os comandos do script trazem comentários explicativos no código fonte, tornando o seu conteúdo mais facilmente acessível para aqueles que desejarem estudá-lo antes da execução. O autor incentiva os usuários do script a se familiarizarem com suas funções e o seu código fonte. Para examinar o código deste script, execute o comando 'less .nmbscript' na linha de comando. Para editá-lo, use o editor de texto 'nano' com o comando 'nano .nmbscript'. Para fazer o download deste arquivo em outro sistema, acesse em seu navegador o endereço que digitou para baixá-lo no servidor (bit.ly/nmbscript...).\n	..."
-read
-echo -e "	Durante o processo de instalação e também no uso de determinadas funções, a depender da forma como você acessou o servidor, pode ser solicitada a sua senha de usuário pelo terminal. Neste caso, é a senha do usuário do sistema Linux que você configurou. Isso é necessário para ajustar algumas configurações do NMBOT que demandam privilégios de administrador do sistema. Se você acessou o servidor com um arquivo de chave privada, o que é recomendado, essa senha não será solicitada com a mesma frequência.
+\n	Pressione 'ENTER' para continuar..."
+  read
+  echo -e "	O presente script foi criado com o intuito único e exclusivo de ajudar os demais usuários e assinantes da plataforma NM a configurarem o robô para seu uso pessoal. O script é distribuído livremente para uso, estudo, cópia, modificação e redistribuição. Não é fornecido sob nenhuma licença específica, tampouco são exigidos créditos ou direitos de autoria. Da mesma forma, não é oferecido nenhum tipo de suporte por parte do seu autor. Salienta-se que não há nenhuma pretensão de uso comercial e que o autor não pode ser responsabilizado por eventual e hipotético uso comercial indevido por terceiros.\n	..."
+  read
+  echo -e "	O autor deste script não possui nenhum vínculo com os criadores do NMBOT, os quais não prestarão nenhum tipo de suporte para o seu uso. O script torna a instalação, a configuração e a execução do NMBOT mais amigáveis e interativas, mas tenha em mente que a equipe da plataforma NM não presta suporte para o uso do NMBOT no sistema operacional Linux. O autor também esclarece que não se deseja, com esta aplicação, alterar de qualquer maneira o funcionamento intrínseco do NMBOT, em especial com relação às condicionantes de acesso ao robô instituídas pela equipe responsável por ele. É sabido que a execução do NMBOT está sujeita à adesão a uma assinatura paga, e o autor deste script, além de usuário, é um admirador do projeto e recomenda que todos os interessados façam sua adesão pelo site oficial: investidordesucesso.com.br\n	..."
+  read
+  echo -e "	Em resumo, o script tem como objetivo facilitar a vida dos colegas do curso que desejem rodar o NMBOT, especialmente os que querem fazê-lo em máquinas virtuais na nuvem e que possuem reduzida experiência com o sistema operacional Linux e com o uso de linhas de comando. É oferecido com base na solidariedade e de boa fé para que os colegas assinantes da plataforma NM tenham uma melhor experiência com o uso do robô. Tudo o que o script faz pode também ser feito manualmente. Use-o por sua conta e risco, desde que saiba o que está fazendo.\n	..."
+  read
+  echo -e "	Todas as alterações introduzidas no sistema por este script podem ser removidas com o comando 'nms-remover'. Por motivos de transparência, quase todos os comandos do script trazem comentários explicativos no código fonte, tornando o seu conteúdo mais facilmente acessível para aqueles que desejarem estudá-lo antes da execução. O autor incentiva os usuários do script a se familiarizarem com suas funções e o seu código fonte. Para examinar o código deste script, execute o comando 'less .nmbscript' na linha de comando. Para editá-lo, use o editor de texto 'nano' com o comando 'nano .nmbscript'. Para fazer o download deste arquivo em outro sistema, acesse em seu navegador o endereço que digitou para baixá-lo no servidor (bit.ly/nmbscript...).\n	..."
+  read
+  echo -e "	Durante o processo de instalação e também no uso de determinadas funções, a depender da forma como você acessou o servidor, pode ser solicitada a sua senha de usuário pelo terminal. Neste caso, é a senha do usuário do sistema Linux que você configurou. Isso é necessário para ajustar algumas configurações do NMBOT que demandam privilégios de administrador do sistema. Se você acessou o servidor com um arquivo de chave privada, o que é recomendado, essa senha não será solicitada com a mesma frequência.
 \n	Faça bom proveito!
-\n	Versão do script: $NMBSCRIPT_VERSION
-	Versão do NMBOT: 1.3
+\n	Versão atual do script: $NMBSCRIPT_VERSION
+	Versão atual do NMBOT: $NMBOT_VERSION
 \n	Autor do script original: Victor H.S.\n"
 }
 
@@ -776,8 +815,11 @@ function nms-remover() {
 
   [[ -f ~/.bashrc.bak ]] && { rm ~/.bashrc; mv ~/.bashrc.bak ~/.bashrc; . ~/.bashrc; }
   [[ -f /etc/profile.d/nmbscript-variables.sh ]] && sudo rm -f /etc/profile.d/nmbscript-variables.sh
-  [[ "$1" = "-f" ]] && [[ -f ~/.nmbscript ]] && rm -f ~/.nmbscript
-  unset NMBSCRIPT_VERSION NM_LAST_URL
+  if [[ "$1" = "-f" ]]; then
+    [[ -f ~/.nmbscript ]] && rm -f ~/.nmbscript* 2> /dev/null
+    [[ -f ~/.nmbot.zip ]] && rm -f ~/.nmbot* 2> /dev/null
+  fi
+  unset NMBOT_VERSION NMBSCRIPT_VERSION NM_LAST_URL NM_COUNT
   echo -e "\nArquivos do Script removidos com sucesso. Se instalado, o NMBOT segue em funcionamento.\nReinicie a sessão do terminal para atualizar todas as configurações.\n"
   return 0
 }
@@ -796,7 +838,7 @@ alias nm-testar-fut="do-nmbot-command futures-test.sh"
 alias nm-pw-fut="do-nmbot-command futures-pwsync.sh"
 alias nm-panic-fut="do-nmbot-command futures-panic.sh PANIC-SELL FUTUROS"
 
-##### Funções internas do NMBScript para execução de tarefas mais complexas.
+##### Funções internas do NMBScript para automação e execução de tarefas mais complexas.
 ##### Não usar manualmente, pois o uso incorreto pode comprometer o funcionamento do NMBOT.
 
 # Função para executar a instalação de nova instância do robô
@@ -806,19 +848,19 @@ function do-nmbot-install() {
   do-nmbot-nextdir "$NM_COUNT"
 
   # Criar diretório para a nova instância do robô e descompactá-lo
-  nmnewpath="${HOME}/nmbot${nmbot_nextdir_number}/"
-  mkdir "$nmnewpath"
-  unzip -qq "$2" -d "$nmnewpath"
+  nmnewpath="${HOME}/nmbot${nmbot_nextdir_number}"
+  mkdir "$nmnewpath" 2> /dev/null || return 1
+  unzip -qq "$2" -d "$nmnewpath" 2> /dev/null || { rm -rf "$nmnewpath"; rm -f "$2"; return 1; }
 
-  [[ ! -d "${HOME}/jre" ]] && [[ ! -d "${nmnewpath}jre" ]] && nmjavaalert=true
-  [[ ! -d "${HOME}/jre" ]] && [[ -d "${nmnewpath}jre" ]] && mv "${nmnewpath}jre" "${HOME}/jre"
-  rm -rf "${nmnewpath}jre/" 2> /dev/null
+  # [[ ! -d "${HOME}/jre" ]] && [[ ! -d "${nmnewpath}/jre" ]] && nmjavaalert=true
+  [[ ! -d "${HOME}/jre" ]] && [[ -d "${nmnewpath}/jre" ]] && mv "${nmnewpath}/jre" "${HOME}/jre"
+  rm -rf "${nmnewpath}/jre/" 2> /dev/null
 
   # Atualizar scripts do novo robô para reconhecer a variável ambiente correspondente
   do-nmbot-update-scripts "$nmnewpath" "$nmbot_nextdir_number" 1
 
-  eadboxusername="IS_EADBOX_USERNAME = ${1}"
-  sed -i "/IS_EADBOX_USERNAME/c${eadboxusername}" ${nmnewpath}config/user.properties
+  local eadboxusername="IS_EADBOX_USERNAME = ${1}"
+  sed -i "/IS_EADBOX_USERNAME/c${eadboxusername}" "${nmnewpath}/config/user.properties"
 
   unset nmbot_nextdir_number
   # não exclui $nmnewpath para que possa ser usada como informação pela função interativa
@@ -836,34 +878,34 @@ function do-nmbot-uninstall() {
   # Se existir, copia o conteúdo do arquivo crontab para um arquivo temporário, que será manipulado e instalado
   # Esta estratégia visa utilizar o comando crontab e seus "filtros", de forma a impedir manipulação inapropriada
   #  do arquivo crontab de forma direta
-  crontabfile="/var/spool/cron/crontabs/${USER}"
-  crontabfileexists=0
+  local crontabfile="/var/spool/cron/crontabs/${USER}"
+  local crontabfileexists=0
   sudo test -f "$crontabfile" && crontabfileexists=1
   if [[ "$crontabfileexists" = "1" ]]; then
-    touch crontab.tmp
+    local crontab_tmp="${HOME}/crontab.tmp"
+    touch "$crontab_tmp"
     # Copia o conteúdo do arquivo crontab para um arquivo temporário, excluindo comentários e linhas vazias
-    sudo sed /^#/d "$crontabfile" > crontab.tmp
-    sed -i /^$/d crontab.tmp
+    sudo sed /^#/d "$crontabfile" > "$crontab_tmp"
+    sed -i /^$/d "$crontab_tmp"
   fi
 
   if [[ "$1" = "-a" ]]; then
     for u in "${!nmpath[@]}"; do
       rm -rf "${nmpath[u]}"
     done
-    [[ "$crontabfileexists" = "1" ]] && sed -i "/NMBOT/d" crontab.tmp
+    [[ "$crontabfileexists" = "1" ]] && sed -i "/NMBOT/d" "$crontab_tmp"
     unset u
   else
     rm -rf "${nmpath[$1]}"
-    [[ "$crontabfileexists" = "1" ]] && sed -i "/NMBOT${nmdir_number[$1]}_HOME/d" crontab.tmp
+    [[ "$crontabfileexists" = "1" ]] && sed -i "/NMBOT${nmdir_number[$1]}_HOME/d" "$crontab_tmp"
   fi
 
   # this next command calls the do-nmbot-variables command, which will remove variables pointing to uninstalled instances
   do-nmbot-list
 
-  # update the crontab file
-  crontab crontab.tmp 2> /dev/null
-  rm crontab.tmp 2> /dev/null
-  unset crontabfile crontabfileexists
+  # update the crontab file; redirects output to prevent error if crontab.tmp does not exist
+  crontab "$crontab_tmp" 2> /dev/null
+  rm "$crontab_tmp" 2> /dev/null
   return 0
 }
 
@@ -878,7 +920,8 @@ function do-nmbot-backup() {
   # configuration files are overwritten when restoring from a backup. if needed, a backup must be performed beforehand
 
   [[ -z "$1" ]] && return 1
-  nmbakd="${HOME}/backup-nmbot"
+  local nmbakd="${HOME}/backup-nmbot"
+  local insbakd=""
   [[ ! -d "$nmbakd" ]] && mkdir "$nmbakd" 2> /dev/null
 
   # save backups from all users
@@ -890,13 +933,14 @@ function do-nmbot-backup() {
       cp -r "${nmpath[p]}/log/" "${insbakd}/log/" 2> /dev/null
       cp -r "${nmpath[p]}/log-user/" "${insbakd}/log-user/" 2> /dev/null
     done
+    unset p
     return 0
-  fi
-
-  [[ -z "$2" ]] || [[ ! "$2" =~ ^[0-9]+$ ]] && return 1
 
   # save backup from selected user
-  if [[ "$1" = "1" ]]; then
+  elif [[ "$1" = "1" ]]; then
+    # checks $2 formatting (instance number)
+    [[ -z "$2" ]] || [[ ! "$2" =~ ^[0-9]+$ ]] && return 1
+    # checks for user folder
     [[ ! -d "${nmpath[${2}]}" ]] && return 1
 
     # save with random folder name
@@ -917,14 +961,14 @@ function do-nmbot-backup() {
     # error check: if either instance or path to restore from is null/invalid
     [[ -z "$2" ]] || [[ ! -d "$3" ]] && return 1
 
-    # check for existing files is not done here
-    nmbakfiles=(${3}/config/*.properties)
+    # * does not check for existing files *
+    local nmbakfiles=(${3}/config/*.properties)
     for file in "${nmbakfiles[@]}"; do
       cp "$file" "${nmpath[${2}]}/config/" 2> /dev/null
     done
 
   fi
-  unset nmbakd insbakd bakfiles file
+  unset file
   return 0
 }
 
@@ -933,7 +977,7 @@ function do-nmbot-backup() {
 # Armazena o número de instâncias instaladas na variável $NM_COUNT -> /etc/environment
 function do-nmbot-list() {
 
-  unset nmpath nmdir nmuser nmdir_number nmdir_number_tmp
+  unset nmpath nmdir nmuser nmdir_number
 
   nmpath=(~/nmbot*/)
   nmpath=("${nmpath[@]/%\/}")
@@ -950,22 +994,27 @@ function do-nmbot-list() {
       continue
     fi
 
-    # error check: if the directory of this iteration already HAS a number, create the corresponding nmdir entry and continue. otherwise, change directory name and the corresponding entry in the nmpath array before proceeding
-    # whenever a directory is renamed, a command is called to update all scripts from that directory to the corresponding variable name, and all NMBOTX_HOME variables are updated to prevent further conflict
-    # this specific section of the code will not be executed often. it is meant to be run only when the script is installed in a system whose NMBOT instance was installed manually beforehand
-    nmdir_number_tmp=${nmpath[x]##*nmbot}
+    # error check: if the directory of this iteration already HAS a number, create the corresponding nmdir entry and continue.
+    #    otherwise, change directory name and the corresponding entry in the nmpath array before proceeding
+    # whenever a directory is renamed, a command is called to update all scripts from that directory to the corresponding
+    #    variable name, and all NMBOTX_HOME variables are updated to prevent further conflict
+    # this specific section of the code will not be executed often. it is meant to be run only when the script is installed
+    #    in a system whose NMBOT instance was installed manually beforehand
+    local nmdir_number_tmp=${nmpath[x]##*nmbot}
 
     # if nmdir_number_tmp is null, that is, folder has no number at all
     if [[ -z "$nmdir_number_tmp" ]]; then
+      # this is an incorporated instance. do the following:
       do-nmbot-nextdir "${#nmpath[@]}"
-      nm_oldpath="${nmpath[x]}"
+      local nm_oldpath="${nmpath[x]}"
       nmpath[x]="${nmpath[x]}${nmbot_nextdir_number}"
       nmdir+=("nmbot${nmbot_nextdir_number}")
       nmdir_number+=("$nmbot_nextdir_number")
       mv "$nm_oldpath" "${nmpath[x]}"
       # update scripts to the corresponding variable. previously installed instances will keep using the same java binaries
       do-nmbot-update-scripts "${nmpath[x]}" "$nmbot_nextdir_number" 0
-      unset nm_oldpath
+      # version-check the newly incorporated instance
+      do-nmbot-version-check "${nmpath[x]}/lib/nmbot.jar"
     # if nmdir_number_tmp is numeric, that is, already numbered instance
     elif [[ "$nmdir_number_tmp" =~ ^[0-9]+$ ]]; then
       nmdir+=("nmbot${nmdir_number_tmp}")
@@ -978,13 +1027,13 @@ function do-nmbot-list() {
     fi
 
     # create entry in the nmuser array with e-mail from the /nmbotX/config/user.properties file
-    nmuser_tmp=$( grep USERNAME "${nmpath[x]}"/config/user.properties | tr -d '\r\n' )
+    local nmuser_tmp=$( grep USERNAME "${nmpath[x]}"/config/user.properties | tr -d '\r\n' )
     nmuser_tmp=${nmuser_tmp#* = }
     nmuser_tmp=${nmuser_tmp:="usuario@email.com"}
     nmuser+=("$nmuser_tmp")
 
   done
-  unset nmuser_tmp nmdir_tmp nmdir_number_tmp x
+  unset x
 
   # re-creates the indices. error check and correction
   nmpath=(${nmpath[@]})
@@ -1018,13 +1067,55 @@ function do-nmbot-nextdir() {
   # A próxima instância a ser instalada será a TERCEIRA, mas sua pasta será nmbot2/ (e não nmbot3/, que já está ocupada)
   [[ -z "$1" ]] && return 1
 
-  nmnumber_tmp=$(( $1 + 1 ))
+  local nmnumber_tmp=$(( $1 + 1 ))
   for (( nmbot_nextdir_number=1; nmbot_nextdir_number <= ${nmnumber_tmp}; nmbot_nextdir_number++ )); do
     if [[ ! -d "${HOME}/nmbot${nmbot_nextdir_number}" ]]; then
       break
       return 0
     fi
   done
+}
+
+function do-nmbot-schedule() {
+  # syntax: do-nmbot-schedule <instance index> <wallet> <hour> <minute> [<pwsync>]
+  #         wallet-command: spot, futures
+  #         pwsync: 1 = yes, otherwise = no
+  # examples: do-nmbot-schedule 0 spot 5 9 1
+  #           do-nmbot-schedule 1 futures 10 12
+  #           do-nmbot-schedule 1 futures 10 12 0 (identical to previous command)
+
+  # basic syntax error checking. does not check for parameter compliance
+  [[ "$#" -lt 4 ]] && return 2
+
+  # temporary file to store new cron events
+  local crontab_tmp="${HOME}/crontab.tmp"
+  touch "$crontab_tmp"
+
+  # checks for existing crontab file
+  local crontabfile="/var/spool/cron/crontabs/${USER}"
+  local crontabfileexists="0"
+  sudo test -f "$crontabfile" && crontabfileexists="1"
+  if [[ "$crontabfileexists" = "1" ]]; then
+    # delete existing scheduled task(s) for the current user and wallet
+    sudo sed /^#/d "$crontabfile" > "$crontab_tmp"
+    sed -i /^$/d "$crontab_tmp"
+    sed -i "/NMBOT${nmdir_number[${1}]}_HOME}\/${2}-run.sh/d" "$crontab_tmp"
+    [[ "$5" = "1" ]] && sed -i "/NMBOT${nmdir_number[${1}]}_HOME}\/${2}-pwsync.sh/d" "$crontab_tmp"
+  fi
+
+  # schedule task(s) according to input parameters
+  # if $5 = 1, schedule pwsync to a random time, at least 2 hours away from rebalancing
+  [[ "$5" = "1" ]] && echo "$((10 + $RANDOM % 40)) $(( ( ( $3 + 2 ) % 24 + $RANDOM % 21 ) % 24 )) * * * bash \${NMBOT${nmdir_number[${1}]}_HOME}/${2}-pwsync.sh" >> "$crontab_tmp"
+  echo "$4 $3 * * * bash \${NMBOT${nmdir_number[${1}]}_HOME}/${2}-run.sh" >> "$crontab_tmp"
+  echo "" >> "$crontab_tmp"
+  
+  # install new crontab file and delete temporary file. if unable to install, return an error
+  crontab "$crontab_tmp" 2> /dev/null || { rm "$crontab_tmp" 2> /dev/null; return 1; }
+  rm "$crontab_tmp" 2> /dev/null
+
+  # force cron start
+  sudo service cron start
+  return 0
 }
 
 # Função para atualizar os scripts do NMBOT para utilizarem a variável ambiente correta, de acordo com o diretório de
@@ -1040,7 +1131,7 @@ function do-nmbot-update-scripts() {
   # Example: do-nmbot-update-scrips /home/ubuntu/nmbot4/ 4 1
   # The directory number is redundant, but since it was most certainly calculated beforehand, passing it as an argument avoids unnecessary string processing
 
-  for m in ${1}*.sh; do
+  for m in ${1}/*.sh; do
     sed -i "s/NMBOT_HOME/NMBOT${2}_HOME/g" "$m"
     if [[ "$3" = "1" ]]; then
 
@@ -1049,7 +1140,7 @@ function do-nmbot-update-scripts() {
 
       tmp1=$( grep ^java "$m" )
       [[ -n "$tmp1" ]] && sed -i 's|java|~/jre/bin/java|' "$m"
-#      unset tmp1
+
       unset tmp1
     fi
   done
@@ -1062,27 +1153,58 @@ function do-nmbot-variables() {
   sudo sed -i "/^NMBOT/d" /etc/environment > /dev/null
 
   # Iterate through installed instances creating variables for each of them
+  local v
   for v in "${!nmdir[@]}"; do
     # nmvar -> NMBOTx_HOME
-    nmvar="NMBOT${nmdir_number[v]}_HOME"
+    local nmvar="NMBOT${nmdir_number[v]}_HOME"
     echo "${nmvar}=${nmpath[v]}" | sudo tee -a /etc/environment > /dev/null
     eval "${nmvar}=${nmpath[v]}"
     export "$nmvar"
   done
-  unset nmvar v
 }
 
 # Função de debug para listar as instâncias e variáveis que armazenam suas informações
 function debug-nm() {
+  local larr
   for larr in "${!nmpath[@]}"; do
     echo "index=${larr} nmdir_number=${nmdir_number[larr]} nmdir=${nmdir[larr]} nmpath=${nmpath[larr]} nmuser=${nmuser[larr]}"
   done
-  unset larr
 }
 
 # Gera uma string com a data em formato padrão, usada para backups
 function do-nmbs-datestr() {
   echo "$( date +%Y%m%d-%H%M%S )"
+}
+
+# Converte horários entre o formato UTC e o horário de Brasília
+function do-nmbs-tz() {
+  # small little function to convert UTC time to/from BR time (Sao Paulo)
+  # do-nmbs-tz HH:MM [<UTC>]
+  # if UTC submitted as 2nd parameter, converts from UTC to BR
+  # otherwise, converts from BR to UTC
+  [[ ! "$1" =~ ^([0-9]|0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$ ]] && return 1
+  if [[ "$2" = "UTC" ]]; then
+    TZ="America/Sao_Paulo" date --date='TZ="UTC" '"$1" +%H:%M
+  else
+    TZ="UTC" date --date='TZ="America/Sao_Paulo" '"$1" +%H:%M
+  fi
+  # TZ="$tzout" date --date='TZ="$tzin" '"$1"
+  return 0
+}
+
+# Retorna o caminho completo (absolute path) para um arquivo ou diretório indicado como argumento
+function do-nmbs-abspath() {
+  if [[ -d "$1" ]]; then
+    echo "$(cd "$1"; pwd -P)"
+  elif [[ -f "$1" ]]; then
+    if [[ "$1" = /* ]]; then
+      echo "$1"
+    elif [[ "$1" = */* ]]; then
+      echo "$(cd "${1%/*}"; pwd -P)/${1##*/}"
+    else
+      echo "$(pwd -P)/$1"
+    fi
+  fi
 }
 
 # Função que verifica resposta para um prompt de confirmação s/n.
@@ -1103,7 +1225,7 @@ function do-nmbot-command() {
   # 3 = carteira
   # se $2 e $3 informados, prompt de confirmação
 
-  do-nmbot-list || { echo -e "\nVocê não possui instâncias instaladas do NMBOT.\nPara instalar, use o comando nm-instalar.\n" >&2; return 1; }
+  do-nmbot-list || { echo -e "\nVocê não possui instâncias instaladas do NMBOT.\nPara instalar, use o comando 'nm-instalar'.\n" >&2; return 1; }
   tnmbs-sel-instance
 
   if [[ -n "$3" ]]; then
@@ -1115,11 +1237,77 @@ function do-nmbot-command() {
   bash "${nmpath[$nmbs_current_index]}/${1}"
 }
 
+function do-nmbot-version-check() {
+  # checks the version of an nmbot.jar package and stores it in the NMBOT_VERSION variable
+  # syntax: do-nmbot-version-check [path]
+  # optional: path for the package to be checked
+  # if path is provided, the script will update the NMBOT_VERSION entry in /etc/profile.d/nmbscript-variables.sh
+  # otherwise, the script will search for an nmbot.jar package and set the NMBOT_VERSION variable to its version
+  # if neither a path is provided nor a package is found, the function returns an error (1)
+  # exception: if the NMBOT_VERSION variable is unset, the script just will assign the $current_nmbot_version value to it
+  #  -> this is intended to be done the first time the script is run
+  # there might be flaws in this logic, but their possible consequences are limited. whenever a user updates the nmbot,
+  # the function will verify the version of the newly downloaded package and update the variabl
+  if [[ -z "$NMBOT_VERSION" ]]; then
+    if [[ "$nmbscript_firsttime" = "1" ]]; then
+      NMBOT_VERSION="$current_nmbot_version"
+      export NMBOT_VERSION
+      return 0
+    fi
+  fi
+
+  # checks for a valid nmbot.jar package
+  local pkg_path
+  if [[ -z "$1" ]]; then
+    # if no parameter is given, find a package
+    pkg_path=$(sed -n 1p <<< $(find "$HOME" -name nmbot.jar))
+    if [[ -z "${pkg_path}" ]]; then
+      # no nmbot.jar package found
+      return 1
+    fi
+  elif [[ -f "$1" ]]; then
+    # otherwise, use given package
+    pkg_path="$1"
+  else
+    # if the path is invalid, then return an error
+    return 1
+  fi
+
+  # find the java package
+  local java_path=$(sed -n 1p <<< $(find "$HOME" -name java))
+
+  # if no java is found, return an error
+  if [[ ! -f "$java_path" ]]; then
+    return 1
+  fi
+
+  # request version number from the package
+  local tmp=$(eval "$java_path" -jar "$pkg_path" version | grep "ersion:" )
+  # set system variable accordingly
+  NMBOT_VERSION=${tmp##*ersion: }
+  export NMBOT_VERSION
+
+  # if the path to a package is provided (that is, if this function is run when upgrading the software), overwrite system variable NMBOT_VERSION
+  if [[ "$pkg_path" = "$1" ]]; then
+    sudo sed -i "/NMBOT_VERSION/d" /etc/profile.d/nmbscript-variables.sh > /dev/null
+    echo "export NMBOT_VERSION=\"${NMBOT_VERSION}\"" | sudo tee -a /etc/profile.d/nmbscript-variables.sh > /dev/null
+  fi
+
+  # remove ~/log/ folder which is created when the version check is performed by the nmbot.jar
+  if [[ -d "${HOME}/log/" ]]; then
+    local log_tmp=(${HOME}/log/*)
+    [[ "${log_tmp[*]}" = "${HOME}/log/log4j-nm.log" ]] && rm -rf "${HOME}/log" 2> /dev/null
+  fi
+
+  return 0
+}
+
 # Função para selecionar a instância de trabalho no terminal
 # Define a variável $nmbs_current_index
 function tnmbs-sel-instance() {
-  if [[ ! "$NM_COUNT" -ge "1" ]]; then nmbs_current_index=0; return 1
-  elif [[ "$NM_COUNT" -eq "1" ]]; then nmbs_current_index=0; return 0
+  nmbs_current_index=0
+  if [[ ! "$NM_COUNT" -ge "1" ]]; then return 1
+  elif [[ "$NM_COUNT" -eq "1" ]]; then return 0
   fi
 
   echo -e "\nSelecione a instância do NMBOT desejada.\n"
@@ -1137,9 +1325,9 @@ function tnmbs-sel-instance() {
 # Função para gerar listas de escolha no terminal.
 function tnmbs-select() {
   # select_options ARRAY variable must be set before
-  # returns select_number variable with number
-  # and keeps select_choice with description
-  # unsets select_options variable when done
+  # the array is unset before the function exits, unless $1 = 1
+  # sets 2 variables: select_number with chosen option number; and
+  #                   select_choice with description
   PS3=$'\nDigite a opção correspondente: '
   select select_choice in "${select_options[@]}"; do
     for select_item in "${select_options[@]}"; do
@@ -1167,6 +1355,8 @@ if [[ "$nmbscript_firsttime" = "1" ]]; then
   # Criação do arquivo com as variáveis NMBSCRIPT_VERSION, usada para identificar o script e sinalizar instalação prévia, e NM_LAST_URL, que armazena o endereço de download do NMBOT.
   touch ~/variables.tmp
   echo "export NMBSCRIPT_VERSION=\"${current_nmbscript_version}\"" > ~/variables.tmp
+  # the NMBOT_VERSION is used here because it is set by the do-nmbot-version-check function, which is called by the nms-info function
+  echo "export NMBOT_VERSION=\"${NMBOT_VERSION}\"" >> ~/variables.tmp
   echo "export NM_LAST_URL=\"${current_nmbot_url}\"" >> ~/variables.tmp
   chmod +x ~/variables.tmp
   sudo mv ~/variables.tmp /etc/profile.d/nmbscript-variables.sh
@@ -1191,16 +1381,19 @@ if [[ "$nmbscript_firsttime" = "1" ]]; then
   sudo apt-get -qqy install unzip > /dev/null
 
   # Baixando a primeira cópia do NMBOT
-  if [[ ! -f ~/.nmbot.zip ]]; then
+  bot_tmp="${HOME}/.nmbot.zip"
+  if [[ ! -f "$bot_tmp" ]]; then
     echo -e "Fazendo o download do NMBOT..."
-    wget -qc -nc --show-progress "$NM_LAST_URL" -O ~/.nmbot.zip || echo " > Ocorreu um erro durante o download do NMBOT. Confira e atualize o link de download com o comando 'nm-atualizar'."
+    wget -qc --show-progress "$NM_LAST_URL" -O "$bot_tmp" || {
+      echo -e "\n ********* Ocorreu um erro durante o download do NMBOT. **********\n *** Atualize o link de download com o comando 'nm-atualizar'. ***\n"
+      rm -f "$bot_tmp" 2> /dev/null
+    }
   else
     echo -e "Não será feito download do NMBOT pois o instalador já se encontra presente no sistema.\nPara atualizá-lo, use o comando 'nm-atualizar'."
   fi
 
   echo -e "\nInstalação do NMBScript concluída.\nRecomenda-se reiniciar a conexão com o servidor para aplicar todas as configurações.\n\nPara realizar a instalação do NMBOT, use o comando 'nm-instalar'.\nPara obter ajuda, use o comando 'nms-ajuda'.\n"
-  unset nmbscript_firsttime
+  unset nmbscript_firsttime bot_tmp
 fi
 
-unset current_nmbscript_version current_nmbot_url
-
+unset current_nmbscript_version current_nmbot_url current_nmbot_version
