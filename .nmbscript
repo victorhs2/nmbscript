@@ -1,11 +1,11 @@
 #!/bin/bash
 
-### NMBScript v1.1 ###
+### NMBScript v1.2 ###
 # Configurações iniciais. Não alterar.
 # A serem atualizadas conforme novas versões do script forem distribuídas.
-current_nmbscript_version="1.1"
-current_nmbot_version="1.7"
-current_nmbot_url="https://bit.ly/nmbot-1-7-linux-java"
+current_nmbscript_version="1.2"
+current_nmbot_version="1.10"
+current_nmbot_url="https://bit.ly/nmbot-1-10-linux-java"
 
 # Verificações iniciais: se é a primeira vez que o script é executado e se a versão do
 #   script é a mesma já instalada no sistema. Caso não seja, a informação é atualizada.
@@ -359,7 +359,7 @@ function nm-backup() {
   do-nmbot-list || { echo -e "\nVocê não possui instâncias do NMBOT instaladas.\nPara instalar, use o comando 'nm-instalar'.\nApós, se desejar restaurar as configurações a partir de um backup, use novamente o comando 'nm-backup'.\n" >&2; return 1; }
 
   echo -e "\nQual ação você gostaria de realizar?\n"
-  select_options=("Restaurar configurações a partir de um backup")
+  select_options=("Visualizar um arquivo de backup" "Apagar um backup existente" "Restaurar configurações a partir de um backup")
   [[ "$NM_COUNT" -eq "1" ]] && select_options+=("Salvar backup das configurações do usuário") || select_options+=("Salvar backup das configurações de um usuário" "Salvar backup das configurações de todos os usuários")
   tnmbs-select
   local nm_bakmode="$select_number"
@@ -367,8 +367,100 @@ function nm-backup() {
   # variable set here for error checking: check whether backup directory exists
   local nmbakd="${HOME}/backup-nmbot/"
 
-  # SE FOR 1 -> SALVAR de UM USUÁRIO
-  if [[ "$nm_bakmode" = "1" ]]; then
+  # SE FOR 0 -> VISUALIZAR ARQUIVOS de BACKUP
+  if [[ "$nm_bakmode" = "0" ]]; then
+    # check 1: is there a backup folder?
+    [[ ! -d "$nmbakd" ]] && { echo -e "\nNão foi encontrado um diretório de backups do NMBOT (${nmbakd}).\n"; return 1; }
+    # check 2: is there at least one folder inside it?
+    local nmbak_opt=(${nmbakd}*/)
+    [[ "${nmbak_opt[@]}" = "${nmbakd}*/" ]] && { echo -e "\nNão foi encontrado nenhum backup do NMBOT no diretório de backups (${nmbakd}).\n"; return 1; }
+
+    # se houver apenas 1 pasta de backup disponível
+    if [[ "${#nmbak_opt[@]}" = "1" ]]; then
+      echo -e "\nA pasta de backup disponível é ${nmbak_opt[0]#{nmbakd}}."
+      local nmbak_files=(${nmbak_opt[0]}config/*.properties)
+      [[ "${nmbak_files[@]}" = "${nmbak_opt[0]}config/*.properties" ]] && { echo -e "Não foram encontrados arquivos de backup do NMBOT no diretório apontado.\n"; return 1; }
+      echo -e "Qual arquivo deseja visualizar?\n"
+      nmbak_logs=("${nmbak_opt[0]}"log*/*.log)
+      [[ ! "${nmbak_logs[@]}" = "${nmbak_opt[0]}log*/*.log" ]] && nmbak_files+=("${nmbak_logs[@]}")
+      select_options=("${nmbak_files[@]#${nmbak_opt[0]}}")
+      tnmbs-select
+      local nmbak_view="${select_choice}"
+
+      echo -e "\nVocê irá visualizar o arquivo ${nmbak_view}.\nO conteúdo do arquivo será exibido em uma tela separada.\nPara rolar a tela, se necessário, use as setas do teclado e as teclas 'Page Up' e 'Page Down'.\nPara salvar prints da tela, use as teclas 'Command+Shift+3' (Mac) ou 'Windows+Print Screen' (Windows).\nPara sair do modo de visualização, pressione a tecla 'Q'.\n\nPressione 'ENTER' para continuar..."
+      read
+      less +G "${nmbak_opt[0]}${nmbak_view}"
+      return 0
+
+    # se houver mais de uma pasta de backup disponível
+    else
+      echo -e "\nQual diretório de backup você deseja visualizar?\n"
+      PS3=$'\nDigite a opção correspondente: '
+      local choice item escolha
+      select choice in "${nmbak_opt[@]#${nmbakd}}"; do
+        for item in "${nmbak_opt[@]#${nmbakd}}"; do
+          if [[ "$item" = "$choice" ]]; then
+            escolha=$(( $REPLY - 1 ))
+            break 2
+          fi
+        done
+        echo "Opção inválida. Tente novamente."
+      done
+
+      echo -e "\nA pasta de backup escolhida é ${nmbak_opt[${escolha}]#${nmbakd}}."
+      local nmbak_files=(${nmbak_opt[${escolha}]}config/*.properties)
+      [[ "${nmbak_files[@]}" = "${nmbak_opt[${escolha}]}config/*.properties" ]] && { echo -e "Não foram encontrados arquivos de backup do NMBOT no diretório apontado.\n"; return 1; }
+      echo -e "Qual arquivo deseja visualizar?\n"
+      nmbak_logs=("${nmbak_opt[${escolha}]}"log*/*.log)
+      [[ ! "${nmbak_logs[@]}" = "${nmbak_opt[${escolha}]}log*/*.log" ]] && nmbak_files+=("${nmbak_logs[@]}")
+      select_options=("${nmbak_files[@]#${nmbak_opt[${escolha}]}}")
+      tnmbs-select
+      local nmbak_view="${select_choice}"
+
+      echo -e "\nVocê irá visualizar o arquivo ${nmbak_view}.\nO conteúdo do arquivo será exibido em uma tela separada.\nPara rolar a tela, se necessário, use as setas do teclado e as teclas 'Page Up' e 'Page Down'.\nPara salvar prints da tela, use as teclas 'Command+Shift+3' (Mac) ou 'Windows+Print Screen' (Windows).\nPara sair do modo de visualização, pressione a tecla 'Q'.\n\nPressione 'ENTER' para continuar..."
+      read
+      less +G "${nmbak_opt[${escolha}]}${nmbak_view}"
+      return 0
+    fi
+
+  # SE FOR 1 -> APAGAR um backup
+  elif [[ "$nm_bakmode" = "1" ]]; then
+    # check 1: is there a backup folder?
+    [[ ! -d "$nmbakd" ]] && { echo -e "\nNão foi encontrado um diretório de backups do NMBOT (${nmbakd}).\nNenhuma alteração foi feita.\n"; return 1; }
+    # check 2: is there at least one folder inside it?
+    local nmbak_opt=(${nmbakd}*/)
+    [[ "${nmbak_opt[@]}" = "${nmbakd}*/" ]] && { echo -e "\nNão foi encontrado nenhum backup do NMBOT no diretório de backups (${nmbakd}).\nNenhuma alteração foi feita.\n"; return 1; }
+
+    # se houver apenas 1 pasta de backup disponível
+    if [[ "${#nmbak_opt[@]}" = "1" ]]; then
+      echo -e "\nA pasta de backup existente é ${nmbak_opt[0]#${nmbakd}}."
+      read -p "Deseja mesmo removê-la? (s/n) > " -r
+      do-nmbs-sncheck "$REPLY" || { echo -e "\nCancelado. Nenhuma alteração foi feita.\n"; return 1; }
+      rm -r "${nmbak_opt[0]}" 2> /dev/null && { echo -e "\nConcluído. O backup selecionado foi removido.\n"; return 0; } || { echo -e "\nHouve um erro durante a remoção do backup selecionado. Remova-o manualmente.\n"; return 1; }
+
+    # se houver mais de uma pasta de backup disponível
+    else
+      echo -e "\nQual diretório de backup você deseja remover?\n"
+      PS3=$'\nDigite a opção correspondente: '
+      local choice item escolha
+      select choice in "${nmbak_opt[@]#${nmbakd}}"; do
+        for item in "${nmbak_opt[@]#${nmbakd}}"; do
+          if [[ "$item" = "$choice" ]]; then
+            escolha=$(( $REPLY - 1 ))
+            break 2
+          fi
+        done
+        echo "Opção inválida. Tente novamente."
+      done
+
+      echo -e "\nA pasta de backup escolhida é ${nmbak_opt[${escolha}]#${nmbakd}}."
+      read -p "Deseja mesmo removê-la? (s/n) > " -r
+      do-nmbs-sncheck "$REPLY" || { echo -e "\nCancelado. Nenhuma alteração foi feita.\n"; return 1; }
+      rm -r "${nmbak_opt[${escolha}]}" 2> /dev/null && { echo -e "\nConcluído. O backup selecionado foi removido.\n"; return 0; } || { echo -e "\nHouve um erro durante a remoção do backup selecionado. Remova-o manualmente.\n"; return 1; }
+    fi
+
+  # SE FOR 3 -> SALVAR de UM USUÁRIO
+  elif [[ "$nm_bakmode" = "3" ]]; then
     tnmbs-sel-instance
 
     echo -e "\nEste comando realizará um backup das configurações e dos registros de atividade (LOGs) do NMBOT do usuário ${nmuser[$nmbs_current_index]}.\nA sua instância do NMBOT está instalada em ${nmpath[$nmbs_current_index]}\n"
@@ -395,15 +487,15 @@ function nm-backup() {
       fi
     done
 
-  # SE FOR 2 -> SALVAR backup de todos os usuários
-  elif [[ "$nm_bakmode" = "2" ]]; then
+  # SE FOR 4 -> SALVAR backup de todos os usuários
+  elif [[ "$nm_bakmode" = "4" ]]; then
     echo -e "\nEste comando realizará um backup das configurações e dos registros de atividade (LOGs) do NMBOT para os $NM_COUNT usuários instalados.\nOs backups serão salvos em diretórios com nomes aleatórios.\n"
     read -p "Deseja continuar? (s/n) > " -r
     do-nmbs-sncheck "$REPLY" || { echo -e "\nCancelado. Nenhuma alteração foi feita.\n"; return 1; }
     do-nmbot-backup 2
 
-  # SE FOR 0 -> RESTAURAR para um usuário
-  elif [[ "$nm_bakmode" = "0" ]]; then
+  # SE FOR 2 -> RESTAURAR para um usuário
+  elif [[ "$nm_bakmode" = "2" ]]; then
     # check 1: is there a backup folder?
     [[ ! -d "$nmbakd" ]] && { echo -e "\nNão foi encontrado um diretório de backups do NMBOT (${nmbakd}).\nNenhuma alteração foi feita.\n"; return 1; }
     # check 2: is there at least one folder inside it?
@@ -604,7 +696,7 @@ function nm-atualizar() {
              rm -rf "$folder_tmp"
              return 1 ;;
       # se o comando for para atualizar instâncias instaladas, atualizar mas descartar pacote e URL
-      2)     echo -e "\nO pacote de instalação do NMBOT baixado não possui o pacote Java.\nEle poderá ser usado para atualização das instâncias atualmente instaladas, mas não será armazenado para futuras instalações.\n"
+      2)     echo -e "\nO pacote de instalação do NMBOT baixado não possui o pacote Java.\nEle poderá ser usado para atualização das instâncias atualmente instaladas, mas não será armazenado para futuras instalações."
              nm_update_mode="3" ;;
     esac
   }
@@ -620,7 +712,7 @@ function nm-atualizar() {
              rm -rf "$folder_tmp"
              return 1 ;;
       # se o comando for para atualizar instâncias instaladas, atualizar mas descartar pacote e URL
-      2)     echo -e "\nO pacote de instalação do NMBOT baixado contém scripts para rodá-lo no sistema operacional Windows. Ele poderá ser usado para atualização das instâncias atualmente instaladas, mas não será armazenado para futuras instalações.\n"
+      2)     echo -e "\nO pacote de instalação do NMBOT baixado contém scripts para rodá-lo no sistema operacional Windows. Ele poderá ser usado para atualização das instâncias atualmente instaladas, mas não será armazenado para futuras instalações."
              nm_update_mode="3" ;;
       # caso o pacote não tenha java, já foi definido mode=3, portanto pacote já será descartado sendo ou não para windows. não precisa verificação aqui.
     esac
@@ -634,6 +726,25 @@ function nm-atualizar() {
     echo -e "Cancelado. Nenhuma alteração foi feita e o arquivo baixado foi excluído.\n"
     return 1
   }
+
+  # PASSO ADICIONAL: se MODE=2 (armazenar pacote e URL), verificar se o pacote contém arquivos de configuração de carteira
+  if [[ "$nm_update_mode" = "2" ]]; then
+    local config_check=$(find "${folder_tmp}/config" -name *.properties)
+    # CASO HAJA ARQUIVOS DE CONFIGURAÇÃO NO PACOTE:
+    [[ -n "$config_check" ]] && {
+      echo -e "\n # OPCIONAL: Deseja atualizar/substituir os arquivos de configuração de carteira?
+ # A substituição desses arquivos é recomendada quando o NMBOT oferece novas funções que dependam de configurações adicionais na carteira.
+ # Se você concordar com esta substituição, deverá reconfigurar manualmente as suas carteiras, ajustando a alocação do capital. Será feito um backup das suas configurações de carteira atuais (acessível com 'nm-backup').
+ # Se não concordar, sua carteira permanecerá inalterada, mas você deverá inserir manualmente eventuais novas configurações disponíveis para o robô.
+ # Em qualquer um dos casos, as configurações de usuário, senha e API KEY não serão modificadas."
+      read -p " # Você deseja substituir as suas configurações atuais pelas novas? (s/n) > " -r
+      do-nmbs-sncheck "$REPLY" && {
+        local config_update="1"
+        echo -n " # Fazendo backup das configurações atuais de carteira... "
+        do-nmbot-backup 2 && echo -e "pronto!" || echo -e "ops! Houve um erro durante o backup. A atualização prosseguirá."
+      }
+    }
+  fi
 
   echo -en "\nAtualizando o NMBOT..."
   case $nm_update_mode in
@@ -654,6 +765,10 @@ function nm-atualizar() {
     2)    local a
           for a in "${nmpath[@]}"; do
             cp "$nmbot_check" "${a}/lib/nmbot.jar"
+            [[ "$config_update" = "1" ]] && {
+              cp "${folder_tmp}"/config/spot* "${a}/config/"
+              cp "${folder_tmp}"/config/futures* "${a}/config/"
+            }
           done
           do-nmbot-version-check "${nmpath}/lib/nmbot.jar"
           [[ ! "$bot_tmp" = "$1" ]] && {
@@ -678,7 +793,6 @@ function nm-atualizar() {
   echo -e " concluído! Os arquivos foram atualizados com sucesso.\n"
   return 0
 }
-
 
 #######
 #####
@@ -914,7 +1028,7 @@ function do-nmbot-backup() {
   # syntax: do-nmbot-backup <0-2> <instance_number> <path_to_backup>
   # 0 = restore backup; requires 3rd argument: path from which to restore
   # 1 = save backup from the selected instance; requires 2nd argument; 3rd is optional
-  # 2 = save backup from all instances; ignores other arguments
+  # 2 = save backup from all instances; ignores all other arguments
   # saving backups will save both configuration and log files
   # restoring backups, on the other hand, will only affect configuration files
   # configuration files are overwritten when restoring from a backup. if needed, a backup must be performed beforehand
@@ -1123,7 +1237,7 @@ function do-nmbot-schedule() {
 #  pacote localizado no diretório HOME (~/jre).
 # Instalações prévias do NMBOT, realizadas antes da instalação do NMBScript, por padrão são mantidas com o pacote Java no mesmo
 #  local (dentro do diretório do robô) e não tem essa parte do script atualizada. Esse comportamento padrão é definido na função
-#  interativa, que submete o 3º desta argumento como "0".
+#  interativa, que submete o 3º argumento desta como "0".
 # A função interativa também determina que novas instalações do NMBOT sempre tenham o pacote Java movido para diretório HOME e,
 #  caso o pacote já exista, apenas o remove do diretório do robô e atualiza os scripts. 
 function do-nmbot-update-scripts() {
@@ -1247,7 +1361,7 @@ function do-nmbot-version-check() {
   # exception: if the NMBOT_VERSION variable is unset, the script just will assign the $current_nmbot_version value to it
   #  -> this is intended to be done the first time the script is run
   # there might be flaws in this logic, but their possible consequences are limited. whenever a user updates the nmbot,
-  # the function will verify the version of the newly downloaded package and update the variabl
+  # the function will verify the version of the newly downloaded package and update the variable
   if [[ -z "$NMBOT_VERSION" ]]; then
     if [[ "$nmbscript_firsttime" = "1" ]]; then
       NMBOT_VERSION="$current_nmbot_version"
