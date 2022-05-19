@@ -1,5 +1,5 @@
 # NMBScript - Script de instalação e configuração do NMBOT
-#### Versão atual: 1.2
+#### Versão atual: 1.3
 
 Este script foi desenvolvido para automatizar a instalação e a configuração do NMBOT em servidores rodando o Ubuntu Linux 18.04 LTS. O script foi amplamente testado no shell 'bash' versões 4.4.20 e 5.1.8, sendo provável que funcione em outras versões. Entretanto, para uso com outros tipos de shell ou com outras versões do 'bash', podem ser necessários ajustes no código. É recomendado que o sistema em que for utilizado não tenha outro uso além da execução do NMBOT, de forma que sugere-se a sua instalação em uma máquina virtual, possivelmente em ambiente de nuvem.
 
@@ -39,22 +39,29 @@ Desinstalação manual:
     sudo sed -i /^NMBOT/d /etc/environment
     mv -f ~/.bashrc.bak ~/.bashrc
 
+### Atualização do NMBScript:
+
+A partir da versão 1.3, a atualização do NMBScript foi facilitada. Ao usar o comando 'nms-atualizar', será buscada automaticamente a versão mais recente do script neste repositório no GitHub. Não é mais necessário inserir o link para download do script.
+
+**Se você usa uma versão anterior à 1.3, é recomendado remover o script primeiro com o comando 'nms-remover -f' e, em seguida, instalar a versão mais recente com 'wget bit.ly/nmbscript -O .nmbscript'**
+
 ### Lista de comandos disponíveis:
 
 Comandos do robô:
 
-    nm-instalar
-    nm-desinstalar
-    nm-listar
-    nm-configurar
-    nm-agendar
-    nm-backup
-    nm-registros
-    nm-atualizar
+    nm-instalar         - instalar uma instância do NMBOT
+    nm-desinstalar      - desinstalar instâncias do NMBOT
+    nm-listar           - listar as instâncias instaladas
+    nm-configurar       - configurações de usuário e de carteira
+    nm-agendar          - agendar execução automática
+    nm-backup           - salvar, visualizar ou restaurar backups
+                            das configurações de usuário e carteira
+    nm-registros        - visualizar registros (logs) do NMBOT
+    nm-atualizar        - atualizar o NMBOT
 
 Comandos do script:
 
-    nms-atualizar
-    nms-ajuda
-    nms-info
-    nms-remover
+    nms-atualizar       - atualizar o NMBSCRIPT
+    nms-ajuda           - ajuda com os comandos do script
+    nms-info            - informações gerais
+    nms-remover         - remover o script do sistema
