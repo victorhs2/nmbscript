@@ -1373,7 +1373,7 @@ function do-nmbot-command() {
     do-nmbs-sncheck "$REPLY" || { echo -e "\nCancelado.\n"; return 1; }
   fi
   echo ""
-  bash "${nmpath[$nmbs_current_index]}/${1}" 2> /dev/null || [[ $? = 127 ]] && echo -e "Arquivo correspondente ao comando ($1) não encontrado para a instância escolhida do NMBOT.\n(Sem suporte ao tipo de operação na exchange?)"
+  bash "${nmpath[$nmbs_current_index]}/${1}" 2> /dev/null || { [[ $? = 127 ]] && echo -e "Arquivo correspondente ao comando ($1) não encontrado para a instância escolhida do NMBOT.\n(Sem suporte ao tipo de operação na exchange?)"; }
 }
 
 function do-nmbot-version-check() {
