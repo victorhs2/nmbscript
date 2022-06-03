@@ -1,5 +1,5 @@
 # NMBScript - Script de instalação e configuração do NMBOT
-#### Versão atual: 1.3
+#### Versão atual: 1.3.1
 
 Este script foi desenvolvido para automatizar a instalação e a configuração do NMBOT em servidores rodando o Ubuntu Linux 18.04 LTS. O script foi amplamente testado no shell 'bash' versões 4.4.20 e 5.1.8, sendo provável que funcione em outras versões. Entretanto, para uso com outros tipos de shell ou com outras versões do 'bash', podem ser necessários ajustes no código. É recomendado que o sistema em que for utilizado não tenha outro uso além da execução do NMBOT, de forma que sugere-se a sua instalação em uma máquina virtual, possivelmente em ambiente de nuvem.
 

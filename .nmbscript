@@ -1,9 +1,9 @@
 #!/bin/bash
 
-### NMBScript v1.3 ###
+### NMBScript v1.3.1 ###
 # Configurações iniciais. Não alterar.
 # A serem atualizadas conforme novas versões do script forem distribuídas.
-current_nmbscript_version="1.3"
+current_nmbscript_version="1.3.1"
 
 # Verificações iniciais: se é a primeira vez que o script é executado e se a versão do
 #   script é a mesma já instalada no sistema. Caso não seja, a informação é atualizada.
@@ -638,7 +638,7 @@ function nm-atualizar() {
 
     # se houver pacote baixado no sistema: (mode=1)
     if [[ -f "$nmbotfile" ]]; then
-      echo -e "Este comando fará o download do pacote de instalação do NMBOT a partir do endereço que você informar.\nUma cópia deste pacote será mantida em seu sistema, para o caso de você precisar reinstalar ou instalar uma nova instância do NMBOT.\nPara prosseguir, obtenha o link ou URL (endereço para download) do NMBOT em sua VERSÃO PARA LINUX COM JAVA.\n"
+      echo -e "Este comando fará o download do pacote de instalação do NMBOT a partir do endereço que você informar.\nUma cópia deste pacote será mantida em seu sistema, para o caso de você precisar reinstalar ou instalar uma nova instância do NMBOT.\nPara prosseguir, obtenha o link/URL (endereço para download) do NMBOT para a exchange ${exchange[name]} em sua VERSÃO PARA LINUX COM JAVA.\n"
       read -p "Deseja continuar? (s/n) > " -r
       do-nmbs-sncheck "$REPLY" || { echo -e "Cancelado. Nenhuma alteração foi feita.\n"; return 1; }
       read -p "Cole aqui o link para download do NMBOT > " -r
@@ -655,7 +655,7 @@ function nm-atualizar() {
         0) echo -e "\nO download do pacote de instalação do NMBOT será iniciado a partir do endereço armazenado.\nUma cópia deste pacote será mantida em seu sistema, para o caso de você precisar reinstalar ou instalar uma nova instância do NMBOT.\n"
            nm_update_mode="0"
            nm_url="${exchange[url]}" ;;
-        1) echo -e "\nEste comando fará o download do pacote de instalação do NMBOT a partir do endereço que você informar.\nUma cópia deste pacote será mantida em seu sistema, para o caso de você precisar reinstalar ou instalar uma nova instância do NMBOT.\nPara prosseguir, obtenha o link ou URL (endereço para download) do NMBOT em sua VERSÃO PARA LINUX COM JAVA.\n"
+        1) echo -e "\nEste comando fará o download do pacote de instalação do NMBOT a partir do endereço que você informar.\nUma cópia deste pacote será mantida em seu sistema, para o caso de você precisar reinstalar ou instalar uma nova instância do NMBOT.\nPara prosseguir, obtenha o link/URL (endereço para download) do NMBOT para a exchange ${exchange[name]} em sua VERSÃO PARA LINUX COM JAVA.\n"
            read -p "Cole aqui o link para download do NMBOT > " -r
            nm_update_mode="1"
            nm_url="$REPLY" ;;
@@ -664,7 +664,7 @@ function nm-atualizar() {
 
   # se houver instância(s) instalada(s): (mode=2 pacote linux+java. mode=3 se qualquer outro)
   else
-    echo -e "\nEste comando faz a substituição do arquivo do NMBOT em todas as instâncias instaladas pela versão que você indicar para download.\nUma cópia do pacote de instalação é mantida em seu sistema, para o caso de você precisar reinstalar ou instalar uma nova instância do NMBOT.\nPara prosseguir, obtenha o link ou URL (endereço para download do NMBOT), preferencialmente em sua VERSÃO PARA LINUX COM JAVA.\n"
+    echo -e "\nEste comando faz a atualização do NMBOT em todas as instâncias compatíveis atualmente instaladas.\nUma cópia do pacote de instalação é mantida em seu sistema, para o caso de você precisar reinstalar ou instalar uma nova instância do NMBOT.\nPara prosseguir, obtenha o link/URL (endereço para download) do NMBOT para a exchange ${exchange[name]}, preferencialmente em sua VERSÃO PARA LINUX COM JAVA.\n"
     read -p "Deseja continuar? (s/n) > " -r
     do-nmbs-sncheck "$REPLY" || { echo -e "Cancelado. Nenhuma alteração foi feita.\n"; return 1; }
     read -p "Cole aqui o link para download do NMBOT > " -r
@@ -678,7 +678,7 @@ function nm-atualizar() {
     # usar URL informada ou armazenada
     local bot_tmp="${HOME}/bot-tmp.zip"
     wget -qc --show-progress "$nm_url" -O "$bot_tmp" || {
-      echo -e "\nOcorreu um erro durante o download do NMBOT e a atualização não pôde ser concluída (código ${?}).\nVerifique o endereço de download informado e tente novamente com o comando 'nm-atualizar'.\n"
+      echo -e "\nOcorreu um erro durante o download do NMBOT e a atualização não pôde ser concluída (código ${?}).\nVerifique o endereço de download e tente novamente com o comando 'nm-atualizar'.\n"
       rm -f "$bot_tmp" 2> /dev/null
       return 1
     }
@@ -705,7 +705,7 @@ function nm-atualizar() {
   # PASSO 3: verificar se o pacote contém o arquivo nmbot*.jar como esperado
   local nmbot_check=$(find "$folder_tmp" -name "${exchange[pkg]}" -print -quit)
   [[ ! -f "$nmbot_check" ]] && {
-    echo -e "\nO arquivo do NMBOT correspondente à exchange ${exchange[name]} não foi encontrado no pacote de arquivos que foi baixado.\nVerifique o endereço de download informado e tente novamente com o comando 'nm-atualizar'.\n" >&2
+    echo -e "\nO arquivo do NMBOT correspondente à exchange ${exchange[name]} não foi encontrado no pacote que foi baixado.\nVerifique o endereço de download e tente novamente com o comando 'nm-atualizar'.\n" >&2
     [[ ! "$bot_tmp" = "$1" ]] && rm -f "$bot_tmp"
     rm -rf "$folder_tmp"
     return 1
@@ -717,12 +717,12 @@ function nm-atualizar() {
     case $nm_update_mode in
       # CASO NÃO TENHA JAVA:
       # se o comando for para armazenar o pacote, cancelar
-      [0-1]) echo -e "\nO pacote de instalação do NMBOT baixado não possui o pacote Java. Por isso, o pacote será excluído.\nTente novamente com o endereço para o NMBOT em sua VERSÃO PARA LINUX COM JAVA.\n" >&2
+      [0-1]) echo -e "\nO pacote de instalação baixado não possui o Java. Por isso, o pacote será excluído.\nTente novamente com o endereço do NMBOT para a exchange ${exchange[name]} em sua VERSÃO PARA LINUX COM JAVA.\n" >&2
              [[ ! "$bot_tmp" = "$1" ]] && rm -f "$bot_tmp"
              rm -rf "$folder_tmp"
              return 1 ;;
       # se o comando for para atualizar instâncias instaladas, atualizar mas descartar pacote
-      2)     echo -e "\nO pacote de instalação do NMBOT baixado não possui o pacote Java.\nEle poderá ser usado para atualização das instâncias atualmente instaladas, mas não será armazenado para futuras instalações."
+      2)     echo -e "\nO pacote de instalação baixado não possui o Java.\nAs instâncias do NMBOT poderão ser atualizadas, mas o instalador não ficará armazenado."
              nm_update_mode="3" ;;
     esac
   }
@@ -733,18 +733,18 @@ function nm-atualizar() {
     case $nm_update_mode in
       # CASO TENHAS SCRIPTS PARA WINDOWS:
       # se o comando for para armazenar o pacote (com ou sem atualização de URL), cancelar
-      [0-1]) echo -e "\nO pacote de instalação do NMBOT baixado contém scripts para rodá-lo no sistema operacional Windows. Por isso, o pacote será excluído.\nTente novamente com o endereço para o NMBOT em sua VERSÃO PARA LINUX COM JAVA.\n" >&2
+      [0-1]) echo -e "\nO pacote de instalação baixado contém scripts para Windows. Por isso, o pacote será excluído.\nTente novamente com o endereço do NMBOT para a exchange ${exchange[name]} em sua VERSÃO PARA LINUX COM JAVA.\n" >&2
              [[ ! "$bot_tmp" = "$1" ]] && rm -f "$bot_tmp"
              rm -rf "$folder_tmp"
              return 1 ;;
       # se o comando for para atualizar instâncias instaladas, atualizar mas descartar pacote e URL
-      2)     echo -e "\nO pacote de instalação do NMBOT baixado contém scripts para rodá-lo no sistema operacional Windows. Ele poderá ser usado para atualização das instâncias atualmente instaladas, mas não será armazenado para futuras instalações."
+      2)     echo -e "\nO pacote de instalação baixado contém scripts para Windows.\nAs instâncias do NMBOT poderão ser atualizadas, mas o instalador não ficará armazenado."
              nm_update_mode="3" ;;
       # caso o pacote não tenha java, já foi definido mode=3, portanto pacote já será descartado sendo ou não para windows. não precisa verificação aqui.
     esac
   }
 
-  echo -e "\nO pacote de instalação/atualização do NMBOT foi conferido."
+  echo -e "\nO pacote de instalação/atualização do NMBOT para a exchange ${exchange[name]} foi conferido."
   read -p "Deseja prosseguir? (s/n) > " -r
   do-nmbs-sncheck "$REPLY" || {
     [[ ! "$bot_tmp" = "$1" ]] && rm -f "$bot_tmp"
@@ -761,14 +761,13 @@ function nm-atualizar() {
       echo -e "\n # OPCIONAL: Deseja atualizar/substituir os arquivos de configuração de carteira?
  # A substituição desses arquivos é recomendada quando o NMBOT oferece novas funções que dependam de configurações adicionais na carteira.
  # Se você concordar com esta substituição, deverá reconfigurar manualmente as suas carteiras, ajustando a alocação do capital.
- # Será feito um backup das suas configurações de carteira atuais, que poderá ser acessado com o comando 'nm-backup' para consultas futuras.
+ # Será feito um backup das suas configurações de carteira atuais, o qual poderá ser consultado ou restaurado com o comando 'nm-backup'.
  # Se não concordar, sua carteira permanecerá inalterada, mas você deverá inserir manualmente eventuais novas configurações disponíveis para o robô.
  # Em qualquer um dos casos, as configurações de usuário, senha e API KEY não serão modificadas."
       read -p " # Você deseja substituir as suas configurações atuais pelas novas? (s/n) > " -r
       do-nmbs-sncheck "$REPLY" && {
-        local config_update="1"
         echo -n " # Fazendo backup das configurações atuais de carteira... "
-        do-nmbot-backup 2 && echo -e "pronto!" || echo -e "ops! Houve um erro durante o backup. A atualização prosseguirá."
+        do-nmbot-backup 2 && { echo -e "pronto!"; local config_update="1"; } || echo -e "ops! Houve um erro durante o backup. A atualização do NMBOT prosseguirá e sua carteira não será alterada."
       }
     }
   fi
@@ -1382,7 +1381,7 @@ function do-nmbot-version-check() {
   # :param: $1 = path for the package to be checked (complete path or directory)
   # if neither a path is provided nor a package is found, the function returns an error (1)
 
-  # checks for a valid nmbot.jar package
+  # checks for a valid nmbot*.jar package
   local pkg_path
   if [[ -z "$1" ]]; then
     # if no parameter is given, then return an error
@@ -1471,11 +1470,12 @@ function tnmbs-select() {
 
 # Lista de exchanges compatíveis com o NMBScript.
 # Para adicionar novas exchanges, criar nova variável com os dados da exchange
-#   (e.g. _ex_ftx) e adicionar a entrada correspondente na variável _exchanges
+#   (e.g. _ex_coinbase) e adicionar a entrada correspondente na variável _exchanges
 
 declare -A _exchanges=(
   ["Binance"]="_ex_binance"
   ["Gate.io"]="_ex_gateio"
+  ["FTX"]="_ex_ftx"
 )
 declare -A _ex_binance=(
   [name]="Binance"
@@ -1483,7 +1483,7 @@ declare -A _ex_binance=(
   [pkg]="nmbot.jar"
   [homevar]="NMBOT#_HOME"
   [self]="_ex_binance"
-  [url]="https://bit.ly/nmbot-1-21-binance-linux-java"
+  [url]="https://bit.ly/nmbot-1-22-binance-linux-java"
 )
 declare -A _ex_gateio=(
   [name]="Gate.io"
@@ -1491,7 +1491,15 @@ declare -A _ex_gateio=(
   [pkg]="nmbot-gateio.jar"
   [homevar]="NMBOT#_GATEIO_HOME"
   [self]="_ex_gateio"
-  [url]="https://bit.ly/nmbot-1-21-gateio-linux-java"
+  [url]="https://bit.ly/nmbot-1-22-gateio-linux-java"
+)
+declare -A _ex_ftx=(
+  [name]="FTX"
+  [zip]=".nmbot-ftx.zip"
+  [pkg]="nmbot-ftx.jar"
+  [homevar]="NMBOT#_FTX_HOME"
+  [self]="_ex_ftx"
+  [url]="https://bit.ly/nmbot-1-22-ftx-linux-java"
 )
 
 # Função interna. Retorna o nome do pacote .jar do nmbot.
@@ -1551,7 +1559,7 @@ if [[ "$nmbscript_firsttime" = "1" ]]; then
   }
 
   # Instalação do pacote unzip
-  echo -e "\nInstalando pacotes adicionais necessários..."
+  echo -e "\nInstalando pacotes adicionais necessários...\n"
   sudo apt-get -qqy install unzip > /dev/null
 
   # Baixando a(s) primeira(s) cópia(s) do NMBOT
@@ -1561,13 +1569,13 @@ if [[ "$nmbscript_firsttime" = "1" ]]; then
     if [[ ! -f "${HOME}/${exchange[zip]}" ]]; then
       echo -e "Fazendo o download do NMBOT para a exchange ${exchange[name]}..."
       wget -qc --show-progress "${exchange[url]}" -O "${HOME}/${exchange[zip]}" || {
-        echo -e "***** Erro durante o download do NMBOT para ${exchange[name]}.\n***** Faça o download manualmente com o comando 'nm-atualizar'.\n"
+        echo -e "***** Erro durante o download do NMBOT para ${exchange[name]}.\n***** Faça o download manualmente com o comando 'nm-atualizar'."
         rm -f "${HOME}/${exchange[zip]}" 2> /dev/null
-      }
+      } && echo ""
     fi
   done
 
-  echo -e "\nInstalação do NMBScript concluída.\nReinicie a conexão com o servidor para aplicar todas as configurações.\n\nPara instalar o NMBOT, use o comando 'nm-instalar'.\nPara obter ajuda, use o comando 'nms-ajuda'.\n"
+  echo -e "Instalação do NMBScript concluída.\nReinicie a conexão com o servidor para aplicar todas as configurações.\n\nPara instalar o NMBOT, use o comando 'nm-instalar'.\nPara obter ajuda, use o comando 'nms-ajuda'.\n"
   unset nmbscript_firsttime ex
 fi
 
